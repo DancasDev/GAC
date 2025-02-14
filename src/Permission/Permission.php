@@ -7,21 +7,67 @@ use DancasDev\GAC\Permission\Restrictions\DateValidator;
 
 final class Permission {
     protected $id;
-    protected $module_code;
     protected $feature;
     protected $restriction_list;
     protected $level;
     protected $is_disabled;
+    protected $module_id;
+    protected $module_code;
+    protected $module_is_developing;
     
     protected $featureKeys = ['create' => '0', 'read' => '1', 'update' => '2', 'delete' => '3', 'trash' => '4', 'dev' => '5'];
 
     public function __construct(array $data) {
         $this->id = $data['id'] ?? null;
-        $this->module_code = $data['module_code'] ?? null;
         $this->feature = $data['feature'] ?? null;
         $this->restriction_list = $data['restriction_list'] ?? null;
         $this->level = $data['level'] ?? null;
         $this->is_disabled = $data['is_disabled'] ?? null;
+        $this->module_id = $data['module_id'] ?? null;
+        $this->module_code = $data['module_code'] ?? null;
+        $this->module_is_developing = $data['module_is_developing'] ?? null;
+    }
+    
+    public function getId() : int {
+        return $this->id;
+    }
+
+    public function getModuleId() : int {
+        return $this->module_id;
+    }
+
+    public function getModuleCode() : string {
+        return $this->module_code;
+    }
+
+    public function getFeature() : array {
+        return $this->feature;
+    }
+
+    public function getRestrictionList() : array {
+        return $this->restriction_list;
+    }
+
+    public function getLevel() : int {
+        return $this->level;
+    }
+
+    /**
+     * Validar si el permiso esta inhabilitado
+     * 
+     * @return bool
+     */
+    public function isDisabled() : bool {
+        return $this->is_disabled == '1';
+    }
+
+    /**
+     * Validar si el modulo esta en modo desarrollo
+     * 
+     * @return bool
+     */
+    public function moduleIsDeveloping() : bool {
+        return $this->module_is_developing == '1';
     }
 
     /**

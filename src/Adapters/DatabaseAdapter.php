@@ -117,7 +117,7 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
             return [];
         }
 
-        $query = 'SELECT a.id, a.module_category_id, a.code FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id WHERE (';
+        $query = 'SELECT a.id, a.module_category_id, a.code, a.is_developing FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id WHERE (';
         if (!empty($moduleCategoryIds)) {
             $query .= 'a.module_category_id IN (' . implode(',', $moduleCategoryIds) . ')';
         }

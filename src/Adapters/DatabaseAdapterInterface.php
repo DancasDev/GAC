@@ -56,6 +56,13 @@ interface DatabaseAdapterInterface {
      * 
      * @return array Arreglo de restricciones.
      * 
+     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
+     *  - id: Identificador de la restricción.
+     *  - restriction_category: Categoría de la restricción.
+     *  - restriction_type: Tipo de restricción (NULL: Ninguno, '0': Lista negra, '1': lista blanca).
+     *  - restriction_value: Valor de la restricción.
+     *  - is_disabled: Indica si la restricción está deshabilitada ('0' es No, '1' es Sí).
+     * 
      */
     public function getRestrictions(string|int|array $permissionIds, bool $onlyEnabled = true): array;
     /**
@@ -65,6 +72,12 @@ interface DatabaseAdapterInterface {
      * @param array $moduleIds Arreglo de identificadores de módulos (opcional).
      * 
      * @return array Arreglo de datos de módulos y categorías.
+     * 
+     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
+     *  - id: Identificador del módulo.
+     *  - module_category_id: Identificador de la categoría de módulo.
+     *  - code: Código del módulo.
+     *  - is_developing: Indica si el módulo está en desarrollo ('0' es No, '1' es Sí).
      */
     public function getModulesAndCategories(array $moduleCategoryIds = [], array $moduleIds = []): array;
 }

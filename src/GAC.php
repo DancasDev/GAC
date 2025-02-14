@@ -14,28 +14,40 @@ class GAC {
     public $cacheAdapter;
 
     protected array $permissions = [];
+
     protected array $entityTypeKeys = ['user' => '1', 'token_external' => '2'];
-    protected int $cacheTtl = 57600;
+    protected $entityType;
+    protected $entityId;
+
+    protected int $cacheTtl = 1800;
     protected string $cachePermissionsPrefix = 'permissions_';
     
     public function __construct($databaseData, $cacheDir = null) {
         // Validar conexión a base de datos
-        if (is_object($databaseData)) {
-            if (!in_array('DancasDev\\GAC\\Adapters\\DatabaseAdapterInterface', class_implements($databaseData))) {
+        $this ->setDatabaseAdapter($databaseData);
+        
+
+        // Validar almacenamiento en caché
+        $this ->setCacheAdapter($cacheDir);
+    }
+
+    public function setDatabaseAdapter($databaseAdapter) : GAC {
+        if (is_object($databaseAdapter)) {
+            if (!in_array('DancasDev\\GAC\\Adapters\\DatabaseAdapterInterface', class_implements($databaseAdapter))) {
                 throw new DatabaseAdapterException('Invalid implementation: The database adapter must implement DatabaseAdapterInterface.', 1);
             }
         }
-        elseif (is_array($databaseData)) {
+        elseif (is_array($databaseAdapter)) {
             $valid = true;
             foreach (['host', 'username', 'password', 'database'] as $key) {
-                if (!array_key_exists($key, $databaseData) || !is_string($databaseData[$key])) {
+                if (!array_key_exists($key, $databaseAdapter) || !is_string($databaseAdapter[$key])) {
                     $valid = false;
                     break;
                 }
             }
 
             if ($valid) {
-                $this ->databaseAdapter = new DatabaseAdapter($databaseData['host'], $databaseData['username'], $databaseData['password'], $databaseData['database']);
+                $this ->databaseAdapter = new DatabaseAdapter($databaseAdapter['host'], $databaseAdapter['username'], $databaseAdapter['password'], $databaseAdapter['database']);
             }
             else {
                 throw new DatabaseAdapterException('Invalid connection parameters: you need to correctly provide the following parameters: host, username, password and database.', 1);
@@ -45,52 +57,77 @@ class GAC {
             throw new DatabaseAdapterException('Need to provide database adapter.', 1);
         }
 
-        // Validar almacenamiento en caché
-        if (is_object($cacheDir)) {
-            if (!in_array('DancasDev\\GAC\\Adapters\\CacheAdapterInterface', class_implements($cacheDir))) {
+        return $this;
+    }
+    
+    public function setCacheAdapter($cacheAdapter) : GAC {
+        if (is_object($cacheAdapter)) {
+            if (!in_array('DancasDev\\GAC\\Adapters\\CacheAdapterInterface', class_implements($cacheAdapter))) {
                 throw new CacheAdapterException('Invalid implementation: The cache adapter must implement CacheAdapterInterface.', 1);
             }
         }
         else {
-            $cacheDir = (!empty($cacheDir) || !is_string($cacheDir)) ? __DIR__ . DIRECTORY_SEPARATOR . 'writable' : $cacheDir;
-            $this ->cacheAdapter = new CacheAdapter($cacheDir);
+            $cacheAdapter = (empty($cacheAdapter) || !is_string($cacheAdapter)) ? __DIR__ . DIRECTORY_SEPARATOR . 'writable' : $cacheAdapter;
+            $this ->cacheAdapter = new CacheAdapter($cacheAdapter);
         }
+        
+        return $this;
     }
 
-    function setCacheTtl(int $ttl) {
+    public function setEntity(string $entityType, string|int $entityId) : GAC {
+        $this ->entityType = (string) ($this ->entityTypeKeys[$entityType] ?? $entityType);
+        $this ->entityId = $entityId;
+        return $this;
+    }
+
+    public function setCacheTtl(int $ttl) : GAC {
         $this ->cacheTtl = $ttl;
+        return $this;
     }
 
-    function setCachePermissionsPrefix(string $prefix) {
+    public function setCachePermissionsPrefix(string $prefix) : GAC {
         $this ->cachePermissionsPrefix = $prefix;
+        return $this;
     }
 
+    public function getEntityType() : string {
+        return $this ->entityType;
+    }
 
+    public function getEntityId() : string|int {
+        return $this ->entityId;
+    }
+
+    public function getPermissions() : array {
+        return $this ->permissions ?? [];
+    }
+    
     /**
      * Cargar los permisos de una entidad
      *  
-     * @param string $entityType - Tipo de entidad
-     * @param string|int $entityId - ID de la entidad
-     * @param string $moduleCode - Código del módulo
      * @param bool $fromCache - (Opcional) Indica si se obtienen los permisos desde la caché
      * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
      * 
-     * @return bool TRUE si tiene permiso, FALSE si no tiene permiso
+     * @return GAC
      */
-    public function loadPermissions(string|int $entityType, string|int $entityId, bool $fromCache = true, bool $onlyEnabled = true) : bool {
-        $entityType = (string) ($this ->entityTypeKeys[$entityType] ?? $entityType);
+    public function loadPermissions(bool $fromCache = true, bool $onlyEnabled = true) {
+        if (empty($this ->entityType) || empty($this ->entityId)) {
+            $this ->permissions = [];
+            return false;
+        }
+        
         $permissions = [];
 
         if ($fromCache) {
-            $permissions = $this ->getPermissionsFromCache($entityType, $entityId, $onlyEnabled);
+            $permissions = $this ->getPermissionsFromCache($this ->entityType, $this ->entityId, $onlyEnabled);
         }
 
         if (empty($permissions)) {
-            $permissions = $this ->getPermissionsFromDB($entityType, $entityId, $onlyEnabled);
+            $permissions = $this ->getPermissionsFromDB($this ->entityType, $this ->entityId, $onlyEnabled);
         }
 
         if (!empty($permissions) && $fromCache) {
-            $this ->cacheAdapter ->save($this ->cachePermissionsPrefix . $entityType . '_' . $entityId, [
+            $this ->cacheAdapter ->save($this ->cachePermissionsPrefix . $this ->entityType . '_' . $this ->entityId, [
                 'onlyEnabled' => $onlyEnabled,
                 'permissions' => $permissions
             ], $this ->cacheTtl);
@@ -98,7 +135,7 @@ class GAC {
 
         $this ->permissions = $permissions;
 
-        return !empty($permissions);
+        return $this;
     }
 
     /**
@@ -136,7 +173,7 @@ class GAC {
      * 
      * @return array Listado de permisos
      */
-    public function getPermissionsFromCache(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
+    protected function getPermissionsFromCache(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
         $response = [];
         $key = $this ->cachePermissionsPrefix . $entityType . '_' . $entityId;
         
@@ -162,7 +199,7 @@ class GAC {
      * 
      * @return array Listado de permisos
      */
-    public function getPermissionsFromDB(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
+    protected function getPermissionsFromDB(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
         $response = [];
 
         # Consultar los roles asignados a la entidad
@@ -257,6 +294,8 @@ class GAC {
                 elseif (!array_key_exists($moduleData['code'], $response)) {
                     $response[$moduleData['code']] = [
                         'id' => $permission['id'],
+                        'module_id' => $moduleData['id'],
+                        'module_is_developing' => $moduleData['is_developing'],
                         'feature' => $permission['feature'],
                         'level' => $permission['level'],
                         'restriction_list' => $permission['restriction_list'],
