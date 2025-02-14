@@ -1,5 +1,5 @@
 {
-    "name": "DancasDev/GAC",
+    "name": "dancasdev/gac",
     "description": "GAC (Granular Access Control) es una librería PHP que proporciona un sistema flexible y eficiente para gestionar los permisos de acceso en desarrollos backend (APIs, MVC, Etc).",
     "homepage": "https://github.com/DancasDev/GAC",
     "keywords": [
