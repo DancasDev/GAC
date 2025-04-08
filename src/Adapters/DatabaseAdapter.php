@@ -9,34 +9,30 @@ use PDO;
 class DatabaseAdapter implements DatabaseAdapterInterface {
     private $connection;
 
-    public function __construct(string $host, string $username, string $password, string $database) {
-        $this ->setConnection($host, $username, $password, $database);
+    public function __construct(PDO|array $params) {
+        if ($params instanceof PDO) {
+            $this->connection = $params;
+        }
+        elseif (is_array($params)) {
+            foreach (['host', 'username', 'password', 'database'] as $key) {
+                if (!array_key_exists($key, $params) || !is_string($params[$key])) {
+                    throw new DatabaseAdapterException('Invalid connection parameters: you need to correctly provide the following parameters: host, username, password and database.', 1);
+                }
+            }
+
+            try {
+                $this ->connection = new PDO('mysql:host=' . $host . ';dbname=' . $database, $username, $password);
+            } catch (\Throwable $th) {
+                throw new DatabaseAdapterException('Error connecting to database "' . $database . '"', 0, $th);
+            }
+        }
+        else {
+            throw new DatabaseAdapterException('Need to provide database adapter.', 1);
+        }
     }
     
     public function __destruct() {
         $this ->destroyConnection();
-    }
-
-    /**
-     * Establece la conexión a la base de datos, esta conexión debe ser almacenada en la propiedad $connection.
-     * 
-     * @param string $host Nombre del host de la base de datos.
-     * @param string $username Nombre de usuario para la conexión a la base de datos.
-     * @param string $password Contraseña para la conexión a la base de datos.
-     * @param string $database Nombre de la base de datos a la que conectarse.
-     * 
-     * @return bool TRUE en caso de éxito.
-     * 
-     * @throws DatabaseAdapterException - Si no se puede establecer la conexión a la base de datos.
-     */
-    public function setConnection(string $host, string $username, string $password, string $database) : bool {
-        try {
-            $this ->connection = new PDO('mysql:host=' . $host . ';dbname=' . $database, $username, $password);
-        } catch (\Throwable $th) {
-            throw new DatabaseAdapterException('Error connecting to database "' . $database . '"', 0, $th);
-        }
-
-        return true;
     }
 
     /**
@@ -110,7 +106,6 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
     }
 
     public function getModulesAndCategories(array $moduleCategoryIds = [], array $moduleIds = []): array {
-        $params = [];
         $hasModules = !empty($moduleIds);
         $hasCategories = !empty($moduleCategoryIds);
         if (!$hasModules && !$hasCategories) {

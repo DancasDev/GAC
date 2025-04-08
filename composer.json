@@ -15,14 +15,9 @@
     ],
     "type": "library",
     "license": "MIT",
-    "require": {
-        "php": "^7.4"
-    },
     "autoload": {
         "psr-4": {
             "DancasDev\\GAC\\": "src"
         }
-    },
-    "minimum-stability": "dev",
-    "prefer-stable": true
+    }
   }

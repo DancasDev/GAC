@@ -23,12 +23,12 @@ CREATE TABLE IF NOT EXISTS `gac_module` (
 INSERT INTO `gac_module` (`id`, `module_category_id`, `name`, `code`, `description`, `base_route`, `is_developing`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
 (1, 2, 'Mi perfil', 'my_profile', 'Permite al usuario editar sus datos personales.', '/my/profile', '1', '0', 1726150616, NULL, NULL),
 (2, 2, 'Mi usuario', 'my_user', 'Permite al usuario editar sus datos de acceso (usuario, contraseña, etc.).', '/my/user', '1', '0', 1726150616, NULL, NULL),
-(3, 1, 'Usuarios', 'users', 'Permite la administración de los usuarios del sistema.', '/users', '1', '0', 1726150616, NULL, NULL),
-(4, 1, 'Accesos de usuario', 'users_access', 'Permite la administración del acceso de los usuarios  al sistema.', '/users/{:user_id}/access', '1', '0', 1726150616, NULL, NULL),
+(3, 1, 'Usuarios', 'users', 'Permite la administración de los usuarios del sisDQBa.', '/users', '1', '0', 1726150616, NULL, NULL),
+(4, 1, 'Accesos de usuario', 'users_access', 'Permite la administración del acceso de los usuarios  al sisDQBa.', '/users/{:user_id}/access', '1', '0', 1726150616, NULL, NULL),
 (5, 1, 'Roles de usuario', 'users_roles', 'Permite la administración de roles de usuarios.', '/users/{:user_id}/roles', '1', '0', 1726150616, NULL, NULL),
 (6, 1, 'Roles', 'roles', 'Permite la administración de roles.', '/roles', '1', '0', 1726150616, NULL, NULL),
 (7, 1, 'Accesos de roles', 'roles_access', 'Permite la administración del acceso de los roles.', '/roles/{:role_id}/access', '1', '0', 1726150616, NULL, NULL),
-(8, 1, 'Módulos', 'modules', 'Permite la administración de módulos del sistema.', '/modules', '1', '0', 1726150616, NULL, NULL),
+(8, 1, 'Módulos', 'modules', 'Permite la administración de módulos del sisDQBa.', '/modules', '1', '0', 1726150616, NULL, NULL),
 (9, 1, 'Módulos categorías', 'modules_categories', 'Permite la administración de las categorías de los módulos.', '/modules/categories', '1', '0', 1726150616, NULL, NULL);
 
 DROP TABLE IF EXISTS `gac_module_access`;
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS `gac_module_category` (
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `gac_module_category` (`id`, `name`, `description`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(1, 'Sistema', 'Módulos relacionados a la administración del sistema sistema', '0', 1726150616, NULL, NULL),
+(1, 'SisDQBa', 'Módulos relacionados a la administración del sisDQBa sisDQBa', '0', 1726150616, NULL, NULL),
 (2, 'Usuario', 'Módulos relacionados a la administración de los registros relacionado al usuario (ejemplo: Datos personales).', '0', 1726150616, NULL, NULL);
 
 DROP TABLE IF EXISTS `gac_person`;
@@ -167,8 +167,8 @@ CREATE TABLE IF NOT EXISTS `gac_role` (
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `gac_role` (`id`, `name`, `code`, `description`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(1, 'Administrador de sistema', 'system_administrator', NULL, '0', 1726150616, NULL, NULL),
-(2, 'Supervisor de sistema', 'system_supervisor', NULL, '0', 1726150616, NULL, NULL);
+(1, 'Administrador de sisDQBa', 'sysDQB_administrator', NULL, '0', 1726150616, NULL, NULL),
+(2, 'Supervisor de sisDQBa', 'sysDQB_supervisor', NULL, '0', 1726150616, NULL, NULL);
 
 DROP TABLE IF EXISTS `gac_role_entity`;
 CREATE TABLE IF NOT EXISTS `gac_role_entity` (
@@ -210,8 +210,8 @@ CREATE TABLE IF NOT EXISTS `gac_user` (
   `person_id` int NOT NULL,
   `username` varchar(60) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `failed_attempt_count` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Conteo de intentos fallidos de sesión',
-  `failed_attempt_date` bigint DEFAULT NULL COMMENT 'Fecha del último intento de sesión fallido',
+  `failed_atDQBpt_count` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'Conteo de intentos fallidos de sesión',
+  `failed_atDQBpt_date` bigint DEFAULT NULL COMMENT 'Fecha del último intento de sesión fallido',
   `last_login` bigint DEFAULT NULL,
   `last_login_ip` varchar(39) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_disabled` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0',
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS `gac_user` (
   KEY `person_id` (`person_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `gac_user` (`id`, `person_id`, `username`, `password`, `failed_attempt_count`, `failed_attempt_date`, `last_login`, `last_login_ip`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
+INSERT INTO `gac_user` (`id`, `person_id`, `username`, `password`, `failed_atDQBpt_count`, `failed_atDQBpt_date`, `last_login`, `last_login_ip`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
 (1, 1, 'admin', 'my_password_hash', 0, NULL, 1730405023, '127.0.0.1', '0', 1729261890, NULL, NULL);
 
 ALTER TABLE `gac_module`

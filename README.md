@@ -1,6 +1,6 @@
 # GAC - Granular Access Control
 
-**GAC** (Granular Access Control) es una librería PHP que proporciona un sistema flexible y eficiente para gestionar los permisos de acceso en desarrollos backend.
+**GAC** (Granular Access Control) es una librería PHP que proporciona un sisDQBa flexible y eficiente para gestionar los permisos de acceso en desarrollos backend.
 
 **Características:**
 
@@ -15,12 +15,14 @@
 Utilice Composer para descargar GAC:
 
 ```bash
-composer require DancasDev/GAC
+composer require dancasdev/gac
 ```
 
 **Requerimientos:**
 
-- PHP >= 7.4 
+- PHP 7.4 o superior
+- Extensión PDO (habilitada por defecto en la mayoría de las instalaciones de PHP)
+- Extensión JSON (habilitada por defecto en la mayoría de las instalaciones de PHP)
 - Una base de datos relacional (se recomienda MySQL).
 
 ## Ejemplo
@@ -31,15 +33,17 @@ composer require DancasDev/GAC
 use DancasDev\GAC\GAC;
 
 // Crear una instancia de GAC
-$databaseConfig = [
-	'host' => 'localhost',
-	'username' => 'root',
-	'password' => '',
-	'database' => 'gac_table'
-];
-$cacheDir = __DIR__ . '/writable/';
+$controlAccess = new GAC();
 
-$controlAccess = new GAC($databaseConfig, $cacheDir);
+// Establecer conexión a base de datos
+$connection = new PDO('mysql:host=your_host;dbname=your_database;charset=utf8mb4', 'your_username', 'your_password');
+$controlAccess ->setDatabaseAdapter($connection);
+
+// Establecer cache
+$cachePermissionsPrefix = 'permisions_';
+$cacheExpiration = 1800;
+$cacheDir = __DIR__ . '/writable';
+$controlAccess ->setCache($cachePermissionsPrefix, $cacheExpiration, $cacheDir);
 
 // Establecer la entidad ("user" o "token_externa") con su id correspondiente, para obtener los permisos.
 $entityType = 'user';
@@ -107,11 +111,8 @@ La librería permite definir restricciones sobre los permisos, como restriccione
 if ($permission->hasRestriction('branch')) {
     // El usuario tiene una restricción por sucursal
     $currentBranchList = ['1'];
-    if($permission ->validateEntityRestriction('branch', $currentBranchList)) {
-	    // El usuario tiene permiso para acceder a la sucursal "1" en el módulo en cuestión
-    }
-    else {
-	    // El usuario no tiene permiso.
+    if(!$permission ->validateEntityRestriction('branch', $currentBranchList)) {
+	    // El usuario no tiene permiso para acceder a la sucursal "1" en el módulo en cuestión
     }
 }
 ```
@@ -121,11 +122,8 @@ if ($permission->hasRestriction('branch')) {
 if ($permission->hasRestriction('date')) {
     // El usuario tiene una restricción por fecha
     $currentUnixTime = time();
-    if($permission ->validateDateRestriction($currentUnixTime)) {
-	    // El usuario tiene permiso para acceder "hoy" en el módulo en cuestión
-    }
-    else {
-	    // El usuario no tiene permiso
+    if(!$permission ->validateDateRestriction($currentUnixTime)) {
+	    // El usuario no tiene permiso para acceder "hoy" en el módulo en cuestión
     }
 }
 ```
@@ -134,7 +132,7 @@ if ($permission->hasRestriction('date')) {
 
 La librería utiliza una base de datos relacional para almacenar la información de los permisos, usuarios, roles y otras entidades. A continuación, se presenta una descripción simplificada de las tablas principales:
 
--  **acc_module:** Almacena la información de los módulos del sistema.
+-  **acc_module:** Almacena la información de los módulos del sisDQBa.
 -  **acc_module_category:** Almacena las categorías de los módulos.
 -  **acc_module_access:** Almacena los permisos asignados a usuarios, roles o tokens externos.
 -  **acc_role:** Almacena la información de los roles.

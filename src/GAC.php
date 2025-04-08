@@ -7,6 +7,7 @@ use DancasDev\GAC\Adapters\DatabaseAdapter;
 use DancasDev\GAC\Adapters\CacheAdapter;
 use DancasDev\GAC\Exceptions\DatabaseAdapterException;
 use DancasDev\GAC\Exceptions\CacheAdapterException;
+use PDO;
 
 
 class GAC {
@@ -19,60 +20,8 @@ class GAC {
     protected $entityType;
     protected $entityId;
 
-    protected int $cacheTtl = 1800;
-    protected string $cachePermissionsPrefix = 'permissions_';
-    
-    public function __construct($databaseData, $cacheDir = null) {
-        // Validar conexión a base de datos
-        $this ->setDatabaseAdapter($databaseData);
-        
-
-        // Validar almacenamiento en caché
-        $this ->setCacheAdapter($cacheDir);
-    }
-
-    public function setDatabaseAdapter($databaseAdapter) : GAC {
-        if (is_object($databaseAdapter)) {
-            if (!in_array('DancasDev\\GAC\\Adapters\\DatabaseAdapterInterface', class_implements($databaseAdapter))) {
-                throw new DatabaseAdapterException('Invalid implementation: The database adapter must implement DatabaseAdapterInterface.', 1);
-            }
-        }
-        elseif (is_array($databaseAdapter)) {
-            $valid = true;
-            foreach (['host', 'username', 'password', 'database'] as $key) {
-                if (!array_key_exists($key, $databaseAdapter) || !is_string($databaseAdapter[$key])) {
-                    $valid = false;
-                    break;
-                }
-            }
-
-            if ($valid) {
-                $this ->databaseAdapter = new DatabaseAdapter($databaseAdapter['host'], $databaseAdapter['username'], $databaseAdapter['password'], $databaseAdapter['database']);
-            }
-            else {
-                throw new DatabaseAdapterException('Invalid connection parameters: you need to correctly provide the following parameters: host, username, password and database.', 1);
-            }
-        }
-        else {
-            throw new DatabaseAdapterException('Need to provide database adapter.', 1);
-        }
-
-        return $this;
-    }
-    
-    public function setCacheAdapter($cacheAdapter) : GAC {
-        if (is_object($cacheAdapter)) {
-            if (!in_array('DancasDev\\GAC\\Adapters\\CacheAdapterInterface', class_implements($cacheAdapter))) {
-                throw new CacheAdapterException('Invalid implementation: The cache adapter must implement CacheAdapterInterface.', 1);
-            }
-        }
-        else {
-            $cacheAdapter = (empty($cacheAdapter) || !is_string($cacheAdapter)) ? __DIR__ . DIRECTORY_SEPARATOR . 'writable' : $cacheAdapter;
-            $this ->cacheAdapter = new CacheAdapter($cacheAdapter);
-        }
-        
-        return $this;
-    }
+    protected $cacheTtl;
+    protected $cachePermissionsPrefix;
 
     public function setEntity(string $entityType, string|int $entityId) : GAC {
         $this ->entityType = (string) ($this ->entityTypeKeys[$entityType] ?? $entityType);
@@ -100,6 +49,64 @@ class GAC {
 
     public function getPermissions() : array {
         return $this ->permissions ?? [];
+    }
+
+    /**
+     * Establecer conexión a la base de datos
+     * 
+     * @param PDO|array $params - Parámetros de conexión a la base de datos
+     * 
+     * @throws DatabaseAdapterException
+     * 
+     * @return GAC
+     */
+    public function setDatabaseAdapter($params) : GAC {
+        if (is_array($params) || $params instanceof PDO) {
+            $this ->databaseAdapter = new DatabaseAdapter($params);
+        }
+        elseif (is_object($params)) {
+            if (!in_array('DancasDev\\GAC\\Adapters\\DatabaseAdapterInterface', class_implements($params))) {
+                throw new DatabaseAdapterException('Invalid implementation: The database adapter must implement DatabaseAdapterInterface.', 1);
+            }
+
+            $this ->databaseAdapter = $params;
+        }
+        else {
+            throw new DatabaseAdapterException('Need to provide database adapter.', 1);
+        }
+
+        return $this;
+    }
+    
+    /**
+     * Establecer cache
+     * 
+     * @param string|null $permissionsPrefix (opcional) - Prefijo para la cache
+     * @param string|null $ttl - (opcional) Tiempo de vida de la cache (en segundos)
+     * @param string $dir - (opcional) Directorio donde se almacenará la cache o adaptador de cache
+     * 
+     * @throws CacheAdapterException
+     * 
+     * @return GAC
+     */
+    public function setCache(string|null $permissionsPrefix = null, string|null $ttl = null, string|object $dir = null) : GAC {
+        $this ->cachePermissionsPrefix = $permissionsPrefix ?? 'permissions_';
+        $this ->ttl = $ttl ?? 1800;
+        $dir ??= __DIR__ . '/writable';
+
+        if(is_string($dir)) {
+            $this ->cacheAdapter = new CacheAdapter($dir);
+        }
+        else {
+            $classImplementList = class_implements($dir);
+            if (!in_array('DancasDev\\GAC\\Adapters\\CacheAdapterInterface', $classImplementList)) {
+                throw new CacheAdapterException('Invalid implementation: The cache adapter must implement CacheAdapterInterface.', 1);
+            }
+            
+            $this ->cacheAdapter = $dir;
+        }
+
+        return $this;
     }
     
     /**
@@ -171,10 +178,17 @@ class GAC {
      * @param string|int $entityId - ID de la entidad
      * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
      * 
+     * @throws CacheAdapterException
+     * 
      * @return array Listado de permisos
      */
     protected function getPermissionsFromCache(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
         $response = [];
+        
+        if (empty($this ->cacheAdapter)) {
+            throw new CacheAdapterException('Cache adapter not set.', 1);
+        }
+        
         $key = $this ->cachePermissionsPrefix . $entityType . '_' . $entityId;
         
         $data = $this ->cacheAdapter ->get($key);
@@ -201,6 +215,10 @@ class GAC {
      */
     protected function getPermissionsFromDB(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
         $response = [];
+
+        if (empty($this ->databaseAdapter)) {
+            throw new DatabaseAdapterException('Database adapter not set.', 1);
+        }
 
         # Consultar los roles asignados a la entidad
         $rolePriority = [];
