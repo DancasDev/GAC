@@ -82,16 +82,16 @@ class GAC {
      * Establecer cache
      * 
      * @param string|null $permissionsPrefix (opcional) - Prefijo para la cache
-     * @param string|null $ttl - (opcional) Tiempo de vida de la cache (en segundos)
+     * @param string|int|null $ttl - (opcional) Tiempo de vida de la cache (en segundos)
      * @param string $dir - (opcional) Directorio donde se almacenará la cache o adaptador de cache
      * 
      * @throws CacheAdapterException
      * 
      * @return GAC
      */
-    public function setCache(string|null $permissionsPrefix = null, string|null $ttl = null, string|object $dir = null) : GAC {
+    public function setCache(string|null $permissionsPrefix = null, string|int|null $ttl = null, string|object $dir = null) : GAC {
         $this ->cachePermissionsPrefix = $permissionsPrefix ?? 'permissions_';
-        $this ->ttl = $ttl ?? 1800;
+        $this ->cacheTtl = (int) ($ttl ?? 1800); // 30 minutos por defecto
         $dir ??= __DIR__ . '/writable';
 
         if(is_string($dir)) {
