@@ -147,6 +147,7 @@ La librería utiliza una base de datos relacional para almacenar la información
 **Relaciones entre las tablas:**
 
 - Un usuario puede tener varios roles.
+- Un cliente (sistemas de información externos) puede tener varios roles.
 - Un rol puede tener múltiples permisos.
 - Los permisos pueden tener restricciones.
 

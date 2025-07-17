@@ -34,7 +34,7 @@ INSERT INTO `gac_module` (`id`, `module_category_id`, `name`, `code`, `descripti
 DROP TABLE IF EXISTS `gac_module_access`;
 CREATE TABLE IF NOT EXISTS `gac_module_access` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `from_entity_type` enum('0','1','2') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Desde la entidad: 0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = Token externo (acc_token_external)',
+  `from_entity_type` enum('0','1','2') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Desde la entidad: 0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = Token externo (gac_client)',
   `from_entity_id` int NOT NULL,
   `to_entity_type` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'A la entidad: 0 = Categoría (acc_module_category), 1 = Módulo (acc_module)',
   `to_entity_id` int NOT NULL,
@@ -174,7 +174,7 @@ DROP TABLE IF EXISTS `gac_role_entity`;
 CREATE TABLE IF NOT EXISTS `gac_role_entity` (
   `id` int NOT NULL AUTO_INCREMENT,
   `role_id` int NOT NULL,
-  `entity_type` enum('1','2') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '1 = Usuario (acc_user), 2 = Token externo (acc_token_external)',
+  `entity_type` enum('1','2') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '1 = Usuario (acc_user), 2 = Token externo (gac_client)',
   `entity_id` int NOT NULL,
   `priority` enum('0','1','2','3','4') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0' COMMENT 'Prioridad del rol: 0 = rol principal, cualquier otro valor diferente a 0 = rol secundario. El usuario solo puede tener un rol asociado por cada valor de este campo',
   `is_disabled` enum('0','1') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0',
@@ -192,16 +192,19 @@ INSERT INTO `gac_role_entity` (`id`, `role_id`, `entity_type`, `entity_id`, `pri
 (1, 1, '1', 1, '0', '0', 1729261890, NULL, NULL),
 (2, 2, '1', 1, '1', '0', 1729261890, NULL, NULL);
 
-DROP TABLE IF EXISTS `gac_token_external`;
-CREATE TABLE IF NOT EXISTS `gac_token_external` (
+DROP TABLE IF EXISTS `gac_client`;
+CREATE TABLE IF NOT EXISTS `gac_client` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` TEXT NULL,
+  `client_id` VARCHAR(255) NOT NULL COMMENT 'Identificador público del cliente (similar a un username)',
+  `client_secret` VARCHAR(255) NOT NULL COMMENT 'Secreto del cliente, DEBE ser almacenado HASHEADO',
   `is_disabled` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0',
   `created_at` bigint NOT NULL,
   `updated_at` bigint DEFAULT NULL,
   `deleted_at` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `name` (`name`)
+  UNIQUE KEY `client_id` (`client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Directorio de tokens para aplicaciones externa, (modifique esta tabla a su conveniencia)';
 
 DROP TABLE IF EXISTS `gac_user`;
