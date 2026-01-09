@@ -9,14 +9,13 @@ use DancasDev\GAC\Exceptions\DatabaseAdapterException;
 use DancasDev\GAC\Exceptions\CacheAdapterException;
 use PDO;
 
-
 class GAC {
     public $databaseAdapter;
     public $cacheAdapter;
 
     protected array $permissions = [];
 
-    protected array $entityTypeKeys = ['user' => '1', 'token_external' => '2'];
+    protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
     protected $entityType;
     protected $entityId;
 
@@ -108,7 +107,8 @@ class GAC {
 
         return $this;
     }
-    
+
+    /*Permisos*/
     /**
      * Cargar los permisos de una entidad
      *  
@@ -120,9 +120,9 @@ class GAC {
     public function loadPermissions(bool $fromCache = true, bool $onlyEnabled = true) {
         if (empty($this ->entityType) || empty($this ->entityId)) {
             $this ->permissions = [];
-            return false;
+            return $this;
         }
-        
+
         $permissions = [];
 
         if ($fromCache) {
@@ -133,7 +133,7 @@ class GAC {
             $permissions = $this ->getPermissionsFromDB($this ->entityType, $this ->entityId, $onlyEnabled);
         }
 
-        if (!empty($permissions) && $fromCache) {
+        if ($fromCache) {
             $this ->cacheAdapter ->save($this ->cachePermissionsPrefix . $this ->entityType . '_' . $this ->entityId, [
                 'onlyEnabled' => $onlyEnabled,
                 'permissions' => $permissions
@@ -150,9 +150,9 @@ class GAC {
      * 
      * @param string $moduleCode - Código del módulo
      * 
-     * @return Permission|bool Instancia de Permission con los datos del permiso, FALSE si no tiene permiso
+     * @return bool
      */
-    public function hasPermission(string $moduleCode) : Permission|bool {
+    public function hasPermission(string $moduleCode) : bool {
         return array_key_exists($moduleCode, $this ->permissions);
     }
 
@@ -164,7 +164,7 @@ class GAC {
      * @return Permission|null Instancia de Permission con los datos del permiso, NULL si no tiene permiso
      */
     public function getPermission(string $moduleCode) : Permission|null {
-        if (!array_key_exists($moduleCode, $this ->permissions)) {
+        if (!$this ->hasPermission($moduleCode)) {
             return null;
         }
 
@@ -235,14 +235,12 @@ class GAC {
             return $response;
         }
 
-        # Depurar restricciones
-        $permissionsIds = [];
+        # Depurar permisos
         $modulesAndCategories = ['category' => [], 'module' => []];
         foreach($permissions as $key => $permission) {
             // Formatear
             $permissions[$key]['feature'] = !empty($permission['feature']) ? explode(',', $permission['feature']) : [];
             $permissions[$key]['level'] = (int) $permission['level'];
-            $permissions[$key]['restriction_list'] = [];
             if ($permission['from_entity_type'] === '0') {
                 $permissions[$key]['priority'] = $rolePriority[$permission['from_entity_id']] ?? 100;
             }
@@ -257,34 +255,12 @@ class GAC {
             else {
                 $modulesAndCategories['module'][$permission['to_entity_id']] = $permission['to_entity_id'];
             }
-
-            $permissionsIds[$permission['id']] = $key;
         }
 
         if (!empty($rolePriority)) {
             usort($permissions, function(array $a, array $b) {
                 return $a['priority'] <=> $b['priority']; // ordenar por prioridad
             });
-        }
-
-        // agregar restricciones
-        $result = $this ->databaseAdapter ->getRestrictions(array_keys($permissionsIds), $onlyEnabled);
-        foreach ($result as $restriction) {
-            $key = $permissionsIds[$restriction['module_access_id']];
-            try {
-                $restriction['restriction_type'] = str_replace(' ', '_', $restriction['restriction_type']);
-                if (array_key_exists($restriction['restriction_category'], $permissions[$key]['restriction_list'])) {
-                    continue;
-                }
-
-                $permissions[$key]['restriction_list'][$restriction['restriction_category']] = [
-                    'id' => $restriction['id'],
-                    'type' => $restriction['restriction_type'],
-                    'data' => json_decode($restriction['restriction_value'], true)
-                ];
-            } catch (\Throwable $th) {
-                //todo: agregar un log de error
-            }
         }
 
         // Granularidad de permisos (categoria -> módulo)
@@ -316,7 +292,6 @@ class GAC {
                         'module_is_developing' => $moduleData['is_developing'],
                         'feature' => $permission['feature'],
                         'level' => $permission['level'],
-                        'restriction_list' => $permission['restriction_list'],
                         'is_disabled' => $permission['is_disabled']
                     ];
                 }
@@ -325,4 +300,6 @@ class GAC {
 
         return $response;
     }
+
+    /*Restricciones*/
 }

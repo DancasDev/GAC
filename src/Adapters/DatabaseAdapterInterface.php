@@ -49,23 +49,6 @@ interface DatabaseAdapterInterface {
     public function getPermissions(string $entityType, string|int $entityId, array $roleIds = [], bool $onlyEnabled = true): array;
   
     /**
-     * Esta funcion recupera las restricciones de uno o mas accesos.
-     * 
-     * @param string|int|array $permissionIds Identificador(es) de permiso(s).
-     * @param bool $onlyEnabled (opcional) Indica si solo se deben recuperar restricciones habilitadas (predeterminado: true).
-     * 
-     * @return array Arreglo de restricciones.
-     * 
-     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
-     *  - id: Identificador de la restricción.
-     *  - restriction_category: Categoría de la restricción.
-     *  - restriction_type: Tipo de restricción (NULL: Ninguno, '0': Lista negra, '1': lista blanca).
-     *  - restriction_value: Valor de la restricción.
-     *  - is_disabled: Indica si la restricción está deshabilitada ('0' es No, '1' es Sí).
-     * 
-     */
-    public function getRestrictions(string|int|array $permissionIds, bool $onlyEnabled = true): array;
-    /**
      * Esta función recupera datos de módulos y sus categorías asociadas en función de los IDs proporcionados.
      * 
      * @param array $moduleCategoryIds Arreglo de identificadores de categorías de módulos (opcional).

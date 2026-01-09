@@ -87,24 +87,6 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         return $query ->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getRestrictions(string|int|array $permissionIds, bool $onlyEnabled = true): array {
-        $permissionIds = is_array($permissionIds) ? $permissionIds : [$permissionIds];
-
-        $query = 'SELECT a.id, a.module_access_id, a.value AS restriction_value, a.is_disabled, b.code AS restriction_type, c.code AS restriction_category FROM `gac_module_access_restriction` AS a';
-        $query .= ' INNER JOIN gac_restriction AS b ON a.restriction_id = b.id';
-        $query .= ' INNER JOIN gac_restriction_category AS c ON b.restriction_category_id = c.id'; 
-        $query .= ' WHERE a.`module_access_id` IN (' . implode(',', $permissionIds) . ') AND a.`deleted_at` IS NULL AND b.`deleted_at` IS NULL AND c.`deleted_at` IS NULL';
-        if ($onlyEnabled) {
-            $query .= ' AND a.`is_disabled` = \'0\' AND b.`is_disabled` = \'0\' AND c.`is_disabled` = \'0\'';
-        }
-        $query .= ' ORDER BY a.`updated_at` DESC, a.`created_at` DESC';
-        
-        $query = $this ->connection ->prepare($query);
-        $query ->execute();
-
-        return $query ->fetchAll(PDO::FETCH_ASSOC);
-    }
-
     public function getModulesAndCategories(array $moduleCategoryIds = [], array $moduleIds = []): array {
         $hasModules = !empty($moduleIds);
         $hasCategories = !empty($moduleCategoryIds);
