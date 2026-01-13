@@ -2,7 +2,7 @@
 
 namespace DancasDev\GAC;
 
-use DancasDev\GAC\Permission\Permission;
+use DancasDev\GAC\Permissions\Permissions;
 use DancasDev\GAC\Adapters\DatabaseAdapter;
 use DancasDev\GAC\Adapters\CacheAdapter;
 use DancasDev\GAC\Exceptions\DatabaseAdapterException;
@@ -12,8 +12,6 @@ use PDO;
 class GAC {
     public $databaseAdapter;
     public $cacheAdapter;
-
-    protected array $permissions = [];
 
     protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
     protected array $entityRoleData = []; // ['list' => [], 'priority' => []]
@@ -128,65 +126,45 @@ class GAC {
         return $this;
     }
 
-    /*Permisos*/
     /**
-     * Cargar los permisos de una entidad
-     *  
+     * Cargar datos de permisos o restricciones, y devolver clase para manipular lo mismo
+     * 
+     * @param string $type - tipo de carga ['permissions','restrictions']
      * @param bool $fromCache - (Opcional) Indica si se obtienen los permisos desde la caché
      * 
-     * @return GAC
+     * @return Permissions|Restrictions
      */
-    public function loadPermissions(bool $fromCache = true) {
+    function load(string $type, bool $fromCache = true) {
         if (empty($this ->entityType) || empty($this ->entityId)) {
-            $this ->permissions = [];
-            return $this;
+            throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
+        
+        if ($type === 'permissions') {
+            $permissions = null;
+            if ($fromCache) {
+                $permissions = $this ->getPermissionsFromCache();
+            }
 
-        $permissions = null;
+            if (!is_array($permissions)) {
+                $permissions = $this ->getPermissionsFromDB();
+                
+                // Almacenar resultado
+                $cacheKey = $this ->getCachePermissionsKey();
+                $this ->cacheAdapter ->save($cacheKey, $permissions, $this ->cacheTtl);
+            }
 
-        if ($fromCache) {
-            $permissions = $this ->getPermissionsFromCache();
+            return new Permissions($permissions);
         }
-
-        if (!is_array($permissions)) {
-            $permissions = $this ->getPermissionsFromDB();
-            
-            // Almacenar resultado
-            $cacheKey = $this ->getCachePermissionsKey();
-            $this ->cacheAdapter ->save($cacheKey, $permissions, $this ->cacheTtl);
+        elseif ($type === 'restrictions') {
+            throw new \Exception('Not implemented yet.', 1);
         }
-
-        $this ->permissions = $permissions;
-
-        return $this;
+        else {
+            throw new \Exception('Invalid load type.', 1);
+        }
     }
 
-    /**
-     * Verificar si la entidad tiene permiso para acceder a un módulo
-     * 
-     * @param string $moduleCode - Código del módulo
-     * 
-     * @return bool
-     */
-    public function hasPermission(string $moduleCode) : bool {
-        return array_key_exists($moduleCode, $this ->permissions);
-    }
 
-    /**
-     * Obtener permiso de la entidad
-     * 
-     * @param string $moduleCode - Código del módulo
-     * 
-     * @return Permission|null Instancia de Permission con los datos del permiso, NULL si no tiene permiso
-     */
-    public function getPermission(string $moduleCode) : Permission|null {
-        if (!$this ->hasPermission($moduleCode)) {
-            return null;
-        }
-
-        return new Permission(array_merge($this ->permissions[$moduleCode],['module_code' => $moduleCode]));   
-    }
-
+    /*Permisos*/
     /**
      * Obtener los permisos de una entidad desde la caché
      * 
