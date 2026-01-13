@@ -8,7 +8,6 @@ interface DatabaseAdapterInterface {
      *
      * @param string $entityType Tipo de entidad ('1' para usuario, '2' para token externo).
      * @param string|int $entityId Identificador de la entidad.
-     * @param bool $onlyEnabled (opcional) Indica si solo se deben recuperar roles habilitados (predeterminado: true).
      * 
      * @return array Arreglo de roles asignados a la entidad. 
      * 
@@ -16,11 +15,8 @@ interface DatabaseAdapterInterface {
      *  - id: Identificador del rol.
      *  - code: Código del rol.
      *  - priority: Prioridad del rol
-     *  si $onlyEnabled es false, también puede incluir:
-     *      - is_disabled: Indica si el rol está deshabilitado.
-     *      - is_disabled_entity_role: Indica si la asociación de usuario-rol está deshabilitada.
      */
-    public function getRoles(string $entityType, string|int $entityId, bool $onlyEnabled = true): array;
+    public function getRoles(string $entityType, string|int $entityId): array;
   
     /**
      * Esta función recupera los permisos asociados a una entidad (usuario o token externo), considerando tanto los permisos directos de la entidad como los permisos de sus roles asignados.
@@ -28,7 +24,6 @@ interface DatabaseAdapterInterface {
      * @param string $entityType Tipo de entidad ('1' para usuario, '2' para token externo).
      * @param string|int $entityId Identificador de la entidad.
      * @param array $roleIds Arreglo de identificadores de roles (opcional).
-     * @param bool $onlyEnabled (opcional) Indica si solo se deben recuperar permisos habilitados (predeterminado: true).
      * 
      * @return array Arreglo de permisos (sin procesar).
      * 
@@ -42,17 +37,14 @@ interface DatabaseAdapterInterface {
      *  - restriction_type: Tipo de restricción (NULL: Ninguno, '0': Lista negra, '1': lista blanca).
      *  - feature: String separado por comas con las características permitidas ( '0' para Crear, '1' para Leer, '2' para Actualizar, '3' para Eliminar, '4' para acceso a la papelera (valor funciona en combinación con los valores 1, 2 y 3), '5' para acceso al modo desarrollo).
      *  - level: Nivel del permiso ('0' es Bajo, '1' es Normal, '2' es Alto).
-     *  - is_disabled: Indica si el permiso está deshabilitado ('0' es No, '1' es Sí).
-     *  - created_at: Fecha de creación del permiso.
-     *  - updated_at: Fecha de última actualización del permiso.
      */
-    public function getPermissions(string $entityType, string|int $entityId, array $roleIds = [], bool $onlyEnabled = true): array;
+    public function getPermissions(string $entityType, string|int $entityId, array $roleIds = []): array;
   
     /**
-     * Esta función recupera datos de módulos y sus categorías asociadas en función de los IDs proporcionados.
+     * Esta función recupera datos de módulos en función de los ids proporcionados de los modulos y/o categorías.
      * 
-     * @param array $moduleCategoryIds Arreglo de identificadores de categorías de módulos (opcional).
-     * @param array $moduleIds Arreglo de identificadores de módulos (opcional).
+     * @param array $moduleIds - Arreglo de identificadores de módulos (opcional).
+     * @param array $categoryIds - Arreglo de identificadores de categorías de módulos (opcional).
      * 
      * @return array Arreglo de datos de módulos y categorías.
      * 
@@ -62,5 +54,5 @@ interface DatabaseAdapterInterface {
      *  - code: Código del módulo.
      *  - is_developing: Indica si el módulo está en desarrollo ('0' es No, '1' es Sí).
      */
-    public function getModulesAndCategories(array $moduleCategoryIds = [], array $moduleIds = []): array;
+    public function getModulesData(array $categoryIds = [], array $moduleIds = []): array;
 }

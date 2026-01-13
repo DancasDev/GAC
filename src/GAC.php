@@ -16,6 +16,7 @@ class GAC {
     protected array $permissions = [];
 
     protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
+    protected array $entityRoleData = []; // ['list' => [], 'priority' => []]
     protected $entityType;
     protected $entityId;
 
@@ -52,6 +53,21 @@ class GAC {
 
     public function getCachePermissionsKey() : string {
         return $this ->cachePermissionsPrefix . '_' . $this ->entityType . '_' . $this ->entityId;
+    }
+
+    public function getEntityRoleData(bool $reset = false) {
+        if ($reset || empty($this ->entityRoleData)) {
+            $data = ['list' => [], 'priority' => []];
+            $result = $this ->databaseAdapter ->getRoles($entityType, $entityId);
+            foreach ($result as $key => $role) {
+                $data['priority'][$role['id']] = (int) $role['priority'];
+                $data['list'][] = $role['id'];
+            }
+
+            $this ->entityRoleData = $data;
+        }
+        
+        return $this ->entityRoleData;
     }
 
     /**
@@ -117,11 +133,10 @@ class GAC {
      * Cargar los permisos de una entidad
      *  
      * @param bool $fromCache - (Opcional) Indica si se obtienen los permisos desde la caché
-     * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
      * 
      * @return GAC
      */
-    public function loadPermissions(bool $fromCache = true, bool $onlyEnabled = true) {
+    public function loadPermissions(bool $fromCache = true) {
         if (empty($this ->entityType) || empty($this ->entityId)) {
             $this ->permissions = [];
             return $this;
@@ -134,7 +149,7 @@ class GAC {
         }
 
         if (!is_array($permissions)) {
-            $permissions = $this ->getPermissionsFromDB($this ->entityType, $this ->entityId, $onlyEnabled);
+            $permissions = $this ->getPermissionsFromDB();
             
             // Almacenar resultado
             $cacheKey = $this ->getCachePermissionsKey();
@@ -197,93 +212,95 @@ class GAC {
 
     /**
      * Consultar y depurar los permisos de una entidad (y sus roles)
-     * 
-     * @param string $entityType - Tipo de entidad
-     * @param string|int $entityId - ID de la entidad
-     * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
-     * 
+     *
      * @return array Listado de permisos
      */
-    protected function getPermissionsFromDB(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
+    protected function getPermissionsFromDB() : array {
         $response = [];
 
         if (empty($this ->databaseAdapter)) {
             throw new DatabaseAdapterException('Database adapter not set.', 1);
         }
 
-        # Consultar los roles asignados a la entidad
-        $rolePriority = [];
-        $roleIds = [];
-        $result = $this ->databaseAdapter ->getRoles($entityType, $entityId, $onlyEnabled);
-        foreach ($result as $key => $role) {
-            $rolePriority[$role['id']] = (int) $role['priority'];
-            $roleIds[] = $role['id'];
-        }
-
-        # Consultar permisos relacionados al usuario y los roles asignados al mismo
-        $permissions = $this ->databaseAdapter ->getPermissions($entityType, $entityId, $roleIds, $onlyEnabled);
-        if (empty($permissions)) {
+        # Obtener datos
+        // Roles
+        $roleData = $this ->getEntityRoleData();
+        // permisos relacionados a la entidad y los roles asignados al mismo
+        $result = $this ->databaseAdapter ->getPermissions($entityType, $entityId, $roleData['list']);
+        if (!is_array($result) || empty($result)) {
             return $response;
         }
 
-        # Depurar permisos
-        $modulesAndCategories = ['category' => [], 'module' => []];
-        foreach($permissions as $key => $permission) {
-            // Formatear
-            $permissions[$key]['feature'] = !empty($permission['feature']) ? explode(',', $permission['feature']) : [];
-            $permissions[$key]['level'] = (int) $permission['level'];
-            if ($permission['from_entity_type'] === '0') {
-                $permissions[$key]['priority'] = $rolePriority[$permission['from_entity_id']] ?? 100;
+        # Depurar datos
+        $categoryIds = [];
+        $moduleIds = [];
+        $permissions = [];
+        foreach ($result as $key => $record) {
+            // Almacenar Módulo o Categoría
+            if ($record['to_entity_type'] == '0') {
+                $categoryIds[$record['to_entity_id']] = $record['to_entity_id'];
             }
             else {
-                $permissions[$key]['priority'] = -1;
+                $moduleIds[$record['to_entity_id']] = $record['to_entity_id'];
             }
 
-            // Almacenar
-            if ($permission['to_entity_type'] == '0') {
-                $modulesAndCategories['category'][$permission['to_entity_id']] = $permission['to_entity_id'];
+            // Formatear permiso
+            $record['feature'] = !empty($record['feature']) ? explode(',', $record['feature']) : [];
+            $record['level'] = (int) $record['level'];
+            if ($record['from_entity_type'] !== '0') {
+                $record['priority'] = -1; // permisos personales primero
             }
             else {
-                $modulesAndCategories['module'][$permission['to_entity_id']] = $permission['to_entity_id'];
+                $record['priority'] = $roleData['priority'][$record['from_entity_id']] ?? 100; // permisos heredados despues
             }
+
+            // Almacenar permiso
+            $permissions[$key] = $record;
         }
 
-        if (!empty($rolePriority)) {
+        // Datos de los modulos
+        $modulesBy = ['category' => [], 'module' => []];
+        $result = $this ->databaseAdapter ->getModulesData($categoryIds, $moduleIds);
+        foreach ($result as $record) {
+            $modulesBy['category'][$values['module_category_id']][$values['id']] = $values['id']; // solo referencial
+            $modulesBy['module'][$values['id']] = $values; // modulo con todos los datos
+        }
+
+        
+        // ordenar permisos por prioridad 
+        if (!empty($roleData['priority'])) {
             usort($permissions, function(array $a, array $b) {
-                return $a['priority'] <=> $b['priority']; // ordenar por prioridad
+                return $a['priority'] <=> $b['priority'];
             });
         }
 
-        // Granularidad de permisos (categoria -> módulo)
-        $result = $this ->databaseAdapter ->getModulesAndCategories($modulesAndCategories['category'], $modulesAndCategories['module']);
-        $modulesAndCategories = ['category' => [], 'module' => []];
-        foreach ($result as $values) {
-            $modulesAndCategories['category'][$values['module_category_id']][$values['id']] = $values['id'];
-            $modulesAndCategories['module'][$values['id']] = $values;
-        }
-
+        # Ejecutar granularidad de permisos
         foreach ($permissions as $permission) {
             $result = [];
+            // Acceso por categoría
             if ($permission['to_entity_type'] === '0') {
-                $result = $modulesAndCategories['category'][$permission['to_entity_id']] ?? []; // Acceso por categoría
+                $result = $modulesBy['category'][$permission['to_entity_id']] ?? [];
             }
+            // Acceso por módulo
             elseif ($permission['to_entity_type'] === '1') {
-                $result[] = $permission['to_entity_id']; // Acceso por módulo
+                $result[] = $permission['to_entity_id']; 
             }
-
+            
+            // Almacenar minetras...
             foreach ($result as $moduleId) {
-                $moduleData = $modulesAndCategories['module'][$moduleId] ?? null;
+                $moduleData = $modulesBy['module'][$moduleId] ?? null;
+                // sea un modulo existente
                 if ($moduleData === null) {
                     continue;
                 }
+                // el permiso al modulo no se almaceno anteriormente (aqui es donde entra en juego el orden por medio del atribuyo "priority")
                 elseif (!array_key_exists($moduleData['code'], $response)) {
                     $response[$moduleData['code']] = [
                         'id' => $permission['id'],
                         'module_id' => $moduleData['id'],
                         'module_is_developing' => $moduleData['is_developing'],
                         'feature' => $permission['feature'],
-                        'level' => $permission['level'],
-                        'is_disabled' => $permission['is_disabled']
+                        'level' => $permission['level']
                     ];
                 }
             }
