@@ -64,7 +64,7 @@ INSERT INTO `gac_module` (`id`, `module_category_id`, `name`, `code`, `descripti
 DROP TABLE IF EXISTS `gac_module_access`;
 CREATE TABLE IF NOT EXISTS `gac_module_access` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `from_entity_type` enum('0','1','2') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Desde la entidad: 0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = Token externo (gac_client)',
+  `from_entity_type` enum('0','1','2') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Desde la entidad: 0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = cliente (gac_client)',
   `from_entity_id` int NOT NULL,
   `to_entity_type` enum('0','1') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'A la entidad: 0 = Categoría (acc_module_category), 1 = Módulo (acc_module)',
   `to_entity_id` int NOT NULL,
@@ -183,7 +183,7 @@ DROP TABLE IF EXISTS `gac_role_entity`;
 CREATE TABLE IF NOT EXISTS `gac_role_entity` (
   `id` int NOT NULL AUTO_INCREMENT,
   `role_id` int NOT NULL,
-  `entity_type` enum('1','2') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '1 = Usuario (acc_user), 2 = Token externo (gac_client)',
+  `entity_type` enum('1','2') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '1 = Usuario (acc_user), 2 = cliente (gac_client)',
   `entity_id` int NOT NULL,
   `priority` enum('0','1','2','3','4') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0' COMMENT 'Prioridad del rol: 0 = rol principal, cualquier otro valor diferente a 0 = rol secundario. El usuario solo puede tener un rol asociado por cada valor de este campo',
   `is_disabled` enum('0','1') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0',
