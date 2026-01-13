@@ -56,7 +56,7 @@ class GAC {
     public function getEntityRoleData(bool $reset = false) {
         if ($reset || empty($this ->entityRoleData)) {
             $data = ['list' => [], 'priority' => []];
-            $result = $this ->databaseAdapter ->getRoles($entityType, $entityId);
+            $result = $this ->databaseAdapter ->getRoles($this ->entityType, $this ->entityId);
             foreach ($result as $key => $role) {
                 $data['priority'][$role['id']] = (int) $role['priority'];
                 $data['list'][] = $role['id'];
@@ -204,7 +204,7 @@ class GAC {
         // Roles
         $roleData = $this ->getEntityRoleData();
         // permisos relacionados a la entidad y los roles asignados al mismo
-        $result = $this ->databaseAdapter ->getPermissions($entityType, $entityId, $roleData['list']);
+        $result = $this ->databaseAdapter ->getPermissions($this ->entityType, $this ->entityId, $roleData['list']);
         if (!is_array($result) || empty($result)) {
             return $response;
         }
@@ -240,8 +240,8 @@ class GAC {
         $modulesBy = ['category' => [], 'module' => []];
         $result = $this ->databaseAdapter ->getModulesData($categoryIds, $moduleIds);
         foreach ($result as $record) {
-            $modulesBy['category'][$values['module_category_id']][$values['id']] = $values['id']; // solo referencial
-            $modulesBy['module'][$values['id']] = $values; // modulo con todos los datos
+            $modulesBy['category'][$record['module_category_id']][$record['id']] = $record['id']; // solo referencial
+            $modulesBy['module'][$record['id']] = $record; // modulo con todos los datos
         }
 
         

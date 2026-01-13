@@ -30,7 +30,7 @@ class Permissions {
      * @return Permission|null Instancia de Permission con los datos del permiso, NULL si no tiene permiso
      */
     public function get(string $moduleCode) : Permission|null {
-        if (!$this ->hasPermission($moduleCode)) {
+        if (!$this ->has($moduleCode)) {
             return null;
         }
         elseif (!is_array($this ->list[$moduleCode]) || empty($this ->list[$moduleCode])) {
