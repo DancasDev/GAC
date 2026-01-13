@@ -50,6 +50,10 @@ class GAC {
         return $this ->permissions ?? [];
     }
 
+    public function getCachePermissionsKey() : string {
+        return $this ->cachePermissionsPrefix . '_' . $this ->entityType . '_' . $this ->entityId;
+    }
+
     /**
      * Establecer conexión a la base de datos
      * 
@@ -89,7 +93,7 @@ class GAC {
      * @return GAC
      */
     public function setCache(string|null $permissionsPrefix = null, string|int|null $ttl = null, string|object $dir = null) : GAC {
-        $this ->cachePermissionsPrefix = $permissionsPrefix ?? 'permissions_';
+        $this ->cachePermissionsPrefix = $permissionsPrefix ?? 'permissions';
         $this ->cacheTtl = (int) ($ttl ?? 1800); // 30 minutos por defecto
         $dir ??= __DIR__ . '/writable';
 
@@ -123,21 +127,18 @@ class GAC {
             return $this;
         }
 
-        $permissions = [];
+        $permissions = null;
 
         if ($fromCache) {
-            $permissions = $this ->getPermissionsFromCache($this ->entityType, $this ->entityId, $onlyEnabled);
+            $permissions = $this ->getPermissionsFromCache();
         }
 
-        if (empty($permissions)) {
+        if (!is_array($permissions)) {
             $permissions = $this ->getPermissionsFromDB($this ->entityType, $this ->entityId, $onlyEnabled);
-        }
-
-        if ($fromCache) {
-            $this ->cacheAdapter ->save($this ->cachePermissionsPrefix . $this ->entityType . '_' . $this ->entityId, [
-                'onlyEnabled' => $onlyEnabled,
-                'permissions' => $permissions
-            ], $this ->cacheTtl);
+            
+            // Almacenar resultado
+            $cacheKey = $this ->getCachePermissionsKey();
+            $this ->cacheAdapter ->save($cacheKey, $permissions, $this ->cacheTtl);
         }
 
         $this ->permissions = $permissions;
@@ -174,31 +175,21 @@ class GAC {
     /**
      * Obtener los permisos de una entidad desde la caché
      * 
-     * @param string $entityType - Tipo de entidad
-     * @param string|int $entityId - ID de la entidad
-     * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
-     * 
      * @throws CacheAdapterException
      * 
-     * @return array Listado de permisos
+     * @return array|null Listado de permisos, null en caso de que no exista nada almacenado en cache
      */
-    protected function getPermissionsFromCache(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
-        $response = [];
+    protected function getPermissionsFromCache() : array|null {
+        $response = null;
         
         if (empty($this ->cacheAdapter)) {
             throw new CacheAdapterException('Cache adapter not set.', 1);
         }
         
-        $key = $this ->cachePermissionsPrefix . $entityType . '_' . $entityId;
-        
-        $data = $this ->cacheAdapter ->get($key);
-        if (!empty($data)) {
-            if ($data['onlyEnabled'] === $onlyEnabled) {
-                $response = $data['permissions'];
-            }
-            else {
-                $this ->cacheAdapter ->delete($key);
-            }
+        $cacheKey = $this ->getCachePermissionsKey();
+        $data = $this ->cacheAdapter ->get($cacheKey);
+        if (is_array($data)) {
+            $response = $data;
         }
 
         return $response;

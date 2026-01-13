@@ -60,7 +60,7 @@ class CacheAdapter implements CacheAdapterInterface {
             return null;
         }
 
-        return $data['value'] ?? true;
+        return $data['value'] ?? null;
     }
 
     public function save(string $key, $data, int|null $ttl = 60): bool {
@@ -89,6 +89,11 @@ class CacheAdapter implements CacheAdapterInterface {
         }
 
         $file = $this->cacheDir . DIRECTORY_SEPARATOR . $key;
-        return unlink($file);
+        if (file_exists($file)) {
+            return unlink($file);
+        }
+        else {
+            return false;
+        }
     }
 }
