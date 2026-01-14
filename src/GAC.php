@@ -46,10 +46,6 @@ class GAC {
         return $this ->entityId;
     }
 
-    public function getPermissions() : array {
-        return $this ->permissions ?? [];
-    }
-
     public function getCacheKey(string $type) : string {
         if ($type == 'permissions') {
             $type = 'p';
@@ -135,47 +131,55 @@ class GAC {
     }
 
     /**
-     * Cargar datos de permisos o restricciones, y devolver clase para manipular lo mismo
+     * Obtener permisos a modulos
      * 
-     * @param string $type - tipo de carga ['permissions','restrictions']
      * @param bool $fromCache - (Opcional) Indica si se obtienen los permisos desde la caché
      * 
-     * @return Permissions|Restrictions
+     * @return Permissions
      */
-    function load(string $type, bool $fromCache = true) {
+    public function getPermissions(bool $fromCache = true) : Permissions {
+        $type = 'permissions';
         if (empty($this ->entityType) || empty($this ->entityId)) {
             throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
-        
-        if ($type === 'permissions') {
-            $permissions = null;
-            if ($fromCache) {
-                $permissions = $this ->getFromCache($type);
-            }
 
-            if (!is_array($permissions)) {
-                $permissions = $this ->getPermissionsFromDB();
-                $this ->saveToCache($type, $permissions);
-            }
-
-            return new Permissions($permissions);
+        $permissions = null;
+        if ($fromCache) {
+            $permissions = $this ->getFromCache($type);
         }
-        elseif ($type === 'restrictions') {
-            $restrictions = null;
-            if ($fromCache) {
-                $restrictions = $this ->getFromCache($type);
-            }
 
-            if (!is_array($restrictions)) {
-                $restrictions = $this ->getRestrictionsFromDB();
-                $this ->saveToCache($type, $restrictions);
-            }
+        if (!is_array($permissions)) {
+            $permissions = $this ->getPermissionsFromDB();
+            $this ->saveToCache($type, $permissions);
+        }
 
-            return new Restrictions($restrictions);
+        return new Permissions($permissions);
+    }
+
+    /**
+     * Obtener restricciones del usuario
+     * 
+     * @param bool $fromCache - (Opcional) Indica si se obtienen las restricciones desde la caché
+     * 
+     * @return Restrictions
+     */
+    public function getRestrictions(bool $fromCache = true) : Restrictions {
+        $type = 'restrictions';
+        if (empty($this ->entityType) || empty($this ->entityId)) {
+            throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
-        else {
-            throw new \Exception('Invalid load type.', 1);
+
+        $restrictions = null;
+        if ($fromCache) {
+            $restrictions = $this ->getFromCache($type);
         }
+
+        if (!is_array($restrictions)) {
+            $restrictions = $this ->getRestrictionsFromDB();
+            $this ->saveToCache($type, $restrictions);
+        }
+
+        return new Restrictions($restrictions);
     }
 
     /**
