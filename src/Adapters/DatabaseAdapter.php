@@ -78,6 +78,39 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         return $query ->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function getRestrictions(string $entityType, string|int $entityId, array $roleIds = []): array {
+        if($entityType === '0') {
+            return [];
+        }
+
+        $query = 'SELECT a.id, a.entity_type, a.entity_id, c.code AS category_code, b.code AS type_code, a.data';
+        $query .= ' FROM `gac_restriction` AS a INNER JOIN `gac_restriction_method` AS b ON a.restriction_method_id = b.id INNER JOIN `gac_restriction_category` AS c ON b.restriction_category_id = c.id';
+        $query .= ' WHERE (a.entity_type IS NULL OR (a.entity_type = ? AND a.entity_id = ?)';
+        foreach ($roleIds as $key => $id) {
+            $query .= ' OR (a.entity_type = \'0\' AND a.entity_id = ?)';
+        }
+
+        $query .= ') AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND c.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND c.is_disabled = \'0\'';
+        $query .= ' ORDER BY a.entity_type DESC';
+        $query = $this ->connection ->prepare($query);
+        $query ->execute(array_merge([$entityType, $entityId], $roleIds));
+
+        return $query ->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+     /**
+     * Esta función recupera datos de módulos en función de los ids proporcionados de los modulos y/o categorías.
+     * 
+     * @param array $moduleIds - Arreglo de identificadores de módulos (opcional).
+     * @param array $categoryIds - Arreglo de identificadores de categorías de módulos (opcional).
+     * 
+     * @return array Arreglo de datos de módulos y categorías.
+     * 
+     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
+     *  - id: Identificador del módulo.
+     *  - module_category_id: Identificador de la categoría de módulo.
+     */
+
     public function getModulesData(array $categoryIds = [], array $moduleIds = []): array {
         $hasModules = !empty($moduleIds);
         $hasCategories = !empty($categoryIds);

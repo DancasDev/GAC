@@ -108,16 +108,16 @@ CREATE TABLE IF NOT EXISTS `gac_restriction` (
   `id` int NOT NULL AUTO_INCREMENT,
   `entity_type` enum('0','1','2') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = Cliente (gac_client), NULL = Todos',
   `entity_id` int NOT NULL,
-  `restriction_type_id` int NOT NULL COMMENT 'Tipo de restricción',
+  `restriction_method_id` int NOT NULL COMMENT 'Tipo de restricción',
   `data` text COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Datos para la validación de la restricción.',
   `is_disabled` enum('0','1') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0',
   `created_at` bigint NOT NULL,
   `updated_at` bigint DEFAULT NULL,
   `deleted_at` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `restriction_unique` (`entity_type`,`entity_id`,`restriction_type_id`),
+  UNIQUE KEY `restriction_unique` (`entity_type`,`entity_id`,`restriction_method_id`),
   KEY `entity_type` (`entity_type`),
-  KEY `restriction_type_id` (`restriction_type_id`)
+  KEY `restriction_method_id` (`restriction_method_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DROP TABLE IF EXISTS `gac_restriction_category`;
@@ -135,11 +135,11 @@ CREATE TABLE IF NOT EXISTS `gac_restriction_category` (
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `gac_restriction_category` (`id`, `name`, `code`, `description`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(1, 'Por entidad', 'by_entity', NULL, '0', 1738853181, NULL, NULL),
+(1, 'Por sucursal', 'by_branch', NULL, '0', 1738853181, NULL, NULL),
 (2, 'Por fecha', 'by_date', NULL, '0', 1738853181, NULL, NULL);
 
-DROP TABLE IF EXISTS `gac_restriction_type`;
-CREATE TABLE IF NOT EXISTS `gac_restriction_type` (
+DROP TABLE IF EXISTS `gac_restriction_method`;
+CREATE TABLE IF NOT EXISTS `gac_restriction_method` (
   `id` int NOT NULL AUTO_INCREMENT,
   `restriction_category_id` int NOT NULL,
   `name` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -154,12 +154,13 @@ CREATE TABLE IF NOT EXISTS `gac_restriction_type` (
   KEY `restriction_category_id` (`restriction_category_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `gac_restriction_type` (`id`, `restriction_category_id`, `name`, `code`, `description`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(1, 1, 'Sucursal', 'branch', NULL, '0', 1738853181, NULL, NULL),
-(2, 2, 'En el rango', 'in_range', NULL, '0', 1738853181, NULL, NULL),
-(3, 2, 'Fuera del rango', 'out_range', NULL, '0', 1738853181, NULL, NULL),
-(4, 2, 'Antes de', 'before', NULL, '0', 1738853181, NULL, NULL),
-(5, 2, 'Despues de', 'after', NULL, '0', 1738853181, NULL, NULL);
+INSERT INTO `gac_restriction_method` (`id`, `restriction_category_id`, `name`, `code`, `description`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
+(1, 1, 'Todos, excepto...', 'deny', NULL, '0', 1738853181, NULL, NULL),
+(2, 1, 'Solo en...', 'allow', NULL, '0', 1738853181, NULL, NULL),
+(3, 2, 'En el rango', 'in_range', NULL, '0', 1738853181, NULL, NULL),
+(4, 2, 'Fuera del rango', 'out_range', NULL, '0', 1738853181, NULL, NULL),
+(5, 2, 'Antes de', 'before', NULL, '0', 1738853181, NULL, NULL),
+(6, 2, 'Despues de', 'after', NULL, '0', 1738853181, NULL, NULL);
 
 DROP TABLE IF EXISTS `gac_role`;
 CREATE TABLE IF NOT EXISTS `gac_role` (
@@ -241,10 +242,10 @@ ALTER TABLE `gac_module`
   ADD CONSTRAINT `gac_module_ibfk_1` FOREIGN KEY (`module_category_id`) REFERENCES `gac_module_category` (`id`);
 
 ALTER TABLE `gac_restriction`
-  ADD CONSTRAINT `gac_restriction_ibfk_1` FOREIGN KEY (`restriction_type_id`) REFERENCES `gac_restriction_type` (`id`);
+  ADD CONSTRAINT `gac_restriction_ibfk_1` FOREIGN KEY (`restriction_method_id`) REFERENCES `gac_restriction_method` (`id`);
 
-ALTER TABLE `gac_restriction_type`
-  ADD CONSTRAINT `gac_restriction_type_ibfk_1` FOREIGN KEY (`restriction_category_id`) REFERENCES `gac_restriction_category` (`id`);
+ALTER TABLE `gac_restriction_method`
+  ADD CONSTRAINT `gac_restriction_method_ibfk_1` FOREIGN KEY (`restriction_category_id`) REFERENCES `gac_restriction_category` (`id`);
 
 ALTER TABLE `gac_role_entity`
   ADD CONSTRAINT `gac_role_entity_ibfk_1` FOREIGN KEY (`role_id`) REFERENCES `gac_role` (`id`);
