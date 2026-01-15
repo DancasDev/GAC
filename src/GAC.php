@@ -2,26 +2,25 @@
 
 namespace DancasDev\GAC;
 
-use DancasDev\GAC\Permission\Permission;
+use DancasDev\GAC\Permissions\Permissions;
+use DancasDev\GAC\Restrictions\Restrictions;
 use DancasDev\GAC\Adapters\DatabaseAdapter;
 use DancasDev\GAC\Adapters\CacheAdapter;
 use DancasDev\GAC\Exceptions\DatabaseAdapterException;
 use DancasDev\GAC\Exceptions\CacheAdapterException;
 use PDO;
 
-
 class GAC {
     public $databaseAdapter;
     public $cacheAdapter;
 
-    protected array $permissions = [];
-
-    protected array $entityTypeKeys = ['user' => '1', 'token_external' => '2'];
+    protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
+    protected array $entityRoleData = []; // ['list' => [], 'priority' => []]
     protected $entityType;
     protected $entityId;
 
     protected $cacheTtl;
-    protected $cachePermissionsPrefix;
+    protected $cachekey;
 
     public function setEntity(string $entityType, string|int $entityId) : GAC {
         $this ->entityType = (string) ($this ->entityTypeKeys[$entityType] ?? $entityType);
@@ -34,8 +33,8 @@ class GAC {
         return $this;
     }
 
-    public function setCachePermissionsPrefix(string $prefix) : GAC {
-        $this ->cachePermissionsPrefix = $prefix;
+    public function setCachekey(string $prefix) : GAC {
+        $this ->cachekey = $prefix;
         return $this;
     }
 
@@ -47,8 +46,30 @@ class GAC {
         return $this ->entityId;
     }
 
-    public function getPermissions() : array {
-        return $this ->permissions ?? [];
+    public function getCacheKey(string $type) : string {
+        if ($type == 'permissions') {
+            $type = 'p';
+        }
+        elseif ($type == 'restrictions') {
+            $type = 'r';
+        }
+        
+        return $this ->cachekey . '_' . $type . '_' . $this ->entityType . '_' . $this ->entityId;
+    }
+
+    public function getEntityRoleData(bool $reset = false) {
+        if ($reset || empty($this ->entityRoleData)) {
+            $data = ['list' => [], 'priority' => []];
+            $result = $this ->databaseAdapter ->getRoles($this ->entityType, $this ->entityId);
+            foreach ($result as $key => $role) {
+                $data['priority'][$role['id']] = (int) $role['priority'];
+                $data['list'][] = $role['id'];
+            }
+
+            $this ->entityRoleData = $data;
+        }
+        
+        return $this ->entityRoleData;
     }
 
     /**
@@ -81,16 +102,16 @@ class GAC {
     /**
      * Establecer cache
      * 
-     * @param string|null $permissionsPrefix (opcional) - Prefijo para la cache
+     * @param string|null $key (opcional) - Prefijo para la cache
      * @param string|int|null $ttl - (opcional) Tiempo de vida de la cache (en segundos)
-     * @param string $dir - (opcional) Directorio donde se almacenará la cache o adaptador de cache
+     * @param string|object $dir - (opcional) Directorio donde se almacenará la cache o adaptador de cache
      * 
      * @throws CacheAdapterException
      * 
      * @return GAC
      */
-    public function setCache(string|null $permissionsPrefix = null, string|int|null $ttl = null, string|object $dir = null) : GAC {
-        $this ->cachePermissionsPrefix = $permissionsPrefix ?? 'permissions_';
+    public function setCache(string|null $key = null, string|int|null $ttl = null, string|object $dir = null) : GAC {
+        $this ->cachekey = $key ?? 'gac';
         $this ->cacheTtl = (int) ($ttl ?? 1800); // 30 minutos por defecto
         $dir ??= __DIR__ . '/writable';
 
@@ -108,218 +129,281 @@ class GAC {
 
         return $this;
     }
-    
+
     /**
-     * Cargar los permisos de una entidad
-     *  
+     * Obtener permisos a modulos
+     * 
      * @param bool $fromCache - (Opcional) Indica si se obtienen los permisos desde la caché
-     * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
      * 
-     * @return GAC
+     * @return Permissions
      */
-    public function loadPermissions(bool $fromCache = true, bool $onlyEnabled = true) {
+    public function getPermissions(bool $fromCache = true) : Permissions {
+        $type = 'permissions';
         if (empty($this ->entityType) || empty($this ->entityId)) {
-            $this ->permissions = [];
-            return false;
+            throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
-        
-        $permissions = [];
 
+        $permissions = null;
         if ($fromCache) {
-            $permissions = $this ->getPermissionsFromCache($this ->entityType, $this ->entityId, $onlyEnabled);
+            $permissions = $this ->getFromCache($type);
         }
 
-        if (empty($permissions)) {
-            $permissions = $this ->getPermissionsFromDB($this ->entityType, $this ->entityId, $onlyEnabled);
+        if (!is_array($permissions)) {
+            $permissions = $this ->getPermissionsFromDB();
+            $this ->saveToCache($type, $permissions);
         }
 
-        if (!empty($permissions) && $fromCache) {
-            $this ->cacheAdapter ->save($this ->cachePermissionsPrefix . $this ->entityType . '_' . $this ->entityId, [
-                'onlyEnabled' => $onlyEnabled,
-                'permissions' => $permissions
-            ], $this ->cacheTtl);
-        }
-
-        $this ->permissions = $permissions;
-
-        return $this;
+        return new Permissions($permissions);
     }
 
     /**
-     * Verificar si la entidad tiene permiso para acceder a un módulo
+     * Obtener restricciones del usuario
      * 
-     * @param string $moduleCode - Código del módulo
+     * @param bool $fromCache - (Opcional) Indica si se obtienen las restricciones desde la caché
      * 
-     * @return Permission|bool Instancia de Permission con los datos del permiso, FALSE si no tiene permiso
+     * @return Restrictions
      */
-    public function hasPermission(string $moduleCode) : Permission|bool {
-        return array_key_exists($moduleCode, $this ->permissions);
-    }
-
-    /**
-     * Obtener permiso de la entidad
-     * 
-     * @param string $moduleCode - Código del módulo
-     * 
-     * @return Permission|null Instancia de Permission con los datos del permiso, NULL si no tiene permiso
-     */
-    public function getPermission(string $moduleCode) : Permission|null {
-        if (!array_key_exists($moduleCode, $this ->permissions)) {
-            return null;
+    public function getRestrictions(bool $fromCache = true) : Restrictions {
+        $type = 'restrictions';
+        if (empty($this ->entityType) || empty($this ->entityId)) {
+            throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
 
-        return new Permission(array_merge($this ->permissions[$moduleCode],['module_code' => $moduleCode]));   
+        $restrictions = null;
+        if ($fromCache) {
+            $restrictions = $this ->getFromCache($type);
+        }
+
+        if (!is_array($restrictions)) {
+            $restrictions = $this ->getRestrictionsFromDB();
+            $this ->saveToCache($type, $restrictions);
+        }
+
+        return new Restrictions($restrictions);
     }
 
     /**
-     * Obtener los permisos de una entidad desde la caché
+     * Obtener registros desde la cache
      * 
-     * @param string $entityType - Tipo de entidad
-     * @param string|int $entityId - ID de la entidad
-     * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
+     * @param string $type - tipo de carga ['permissions','restrictions']
+     * 
      * 
      * @throws CacheAdapterException
      * 
-     * @return array Listado de permisos
+     * @return array|null null en caso de que no exista nada almacenado en cache
      */
-    protected function getPermissionsFromCache(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
-        $response = [];
+    protected function getFromCache(string $type) : array|null {
+        $response = null;
         
         if (empty($this ->cacheAdapter)) {
             throw new CacheAdapterException('Cache adapter not set.', 1);
         }
         
-        $key = $this ->cachePermissionsPrefix . $entityType . '_' . $entityId;
-        
-        $data = $this ->cacheAdapter ->get($key);
-        if (!empty($data)) {
-            if ($data['onlyEnabled'] === $onlyEnabled) {
-                $response = $data['permissions'];
-            }
-            else {
-                $this ->cacheAdapter ->delete($key);
-            }
+        $cacheKey = $this ->getCacheKey($type);
+        $data = $this ->cacheAdapter ->get($cacheKey);
+        if (is_array($data)) {
+            $response = $data;
         }
 
         return $response;
     }
 
     /**
+     * Almacenar registros en la cache
+     * 
+     * @param string $type - tipo de carga ['permissions','restrictions']
+     * @param array $data - Datos a almacenar
+     * 
+     * @throws CacheAdapterException
+     * 
+     * @return bool TRUE en caso de éxito, FALSE en caso de fallo. 
+     */
+    protected function saveToCache(string $type, array $data) : bool {
+        if (empty($this ->cacheAdapter)) {
+            throw new CacheAdapterException('Cache adapter not set.', 1);
+        }
+
+        $cacheKey = $this ->getCacheKey($type);
+        return $this ->cacheAdapter ->save($cacheKey, $data, $this ->cacheTtl);
+    }
+    
+    /**
      * Consultar y depurar los permisos de una entidad (y sus roles)
-     * 
-     * @param string $entityType - Tipo de entidad
-     * @param string|int $entityId - ID de la entidad
-     * @param bool $onlyEnabled - (Opcional) Indica si se obtienen solo los permisos habilitados
-     * 
+     *
      * @return array Listado de permisos
      */
-    protected function getPermissionsFromDB(string $entityType, string|int $entityId, bool $onlyEnabled = true) : array {
+    protected function getPermissionsFromDB() : array { 
         $response = [];
 
         if (empty($this ->databaseAdapter)) {
             throw new DatabaseAdapterException('Database adapter not set.', 1);
         }
 
-        # Consultar los roles asignados a la entidad
-        $rolePriority = [];
-        $roleIds = [];
-        $result = $this ->databaseAdapter ->getRoles($entityType, $entityId, $onlyEnabled);
-        foreach ($result as $key => $role) {
-            $rolePriority[$role['id']] = (int) $role['priority'];
-            $roleIds[] = $role['id'];
-        }
-
-        # Consultar permisos relacionados al usuario y los roles asignados al mismo
-        $permissions = $this ->databaseAdapter ->getPermissions($entityType, $entityId, $roleIds, $onlyEnabled);
-        if (empty($permissions)) {
+        # Obtener datos
+        // Roles
+        $roleData = $this ->getEntityRoleData();
+        // permisos relacionados a la entidad y los roles asignados al mismo
+        $result = $this ->databaseAdapter ->getPermissions($this ->entityType, $this ->entityId, $roleData['list']);
+        if (!is_array($result) || empty($result)) {
             return $response;
         }
 
-        # Depurar restricciones
-        $permissionsIds = [];
-        $modulesAndCategories = ['category' => [], 'module' => []];
-        foreach($permissions as $key => $permission) {
-            // Formatear
-            $permissions[$key]['feature'] = !empty($permission['feature']) ? explode(',', $permission['feature']) : [];
-            $permissions[$key]['level'] = (int) $permission['level'];
-            $permissions[$key]['restriction_list'] = [];
-            if ($permission['from_entity_type'] === '0') {
-                $permissions[$key]['priority'] = $rolePriority[$permission['from_entity_id']] ?? 100;
+        # Depurar datos
+        $categoryIds = [];
+        $moduleIds = [];
+        $permissions = [];
+        foreach ($result as $key => $record) {
+            // Almacenar Módulo o Categoría
+            if ($record['to_entity_type'] == '0') {
+                $categoryIds[$record['to_entity_id']] = $record['to_entity_id'];
             }
             else {
-                $permissions[$key]['priority'] = -1;
+                $moduleIds[$record['to_entity_id']] = $record['to_entity_id'];
             }
 
-            // Almacenar
-            if ($permission['to_entity_type'] == '0') {
-                $modulesAndCategories['category'][$permission['to_entity_id']] = $permission['to_entity_id'];
+            // Formatear permiso
+            $record['feature'] = !empty($record['feature']) ? explode(',', $record['feature']) : [];
+            $record['level'] = (int) $record['level'];
+            if ($record['from_entity_type'] !== '0') {
+                $record['priority'] = -1; // permisos personales primero
             }
             else {
-                $modulesAndCategories['module'][$permission['to_entity_id']] = $permission['to_entity_id'];
+                $record['priority'] = $roleData['priority'][$record['from_entity_id']] ?? 100; // permisos heredados despues
             }
 
-            $permissionsIds[$permission['id']] = $key;
+            // Almacenar permiso
+            $permissions[$key] = $record;
         }
 
-        if (!empty($rolePriority)) {
+        // Datos de los modulos
+        $modulesBy = ['category' => [], 'module' => []];
+        $result = $this ->databaseAdapter ->getModulesData($categoryIds, $moduleIds);
+        foreach ($result as $record) {
+            $modulesBy['category'][$record['module_category_id']][$record['id']] = $record['id']; // solo referencial
+            $modulesBy['module'][$record['id']] = $record; // modulo con todos los datos
+        }
+
+        
+        // ordenar permisos por prioridad 
+        if (!empty($roleData['priority'])) {
             usort($permissions, function(array $a, array $b) {
-                return $a['priority'] <=> $b['priority']; // ordenar por prioridad
+                return $a['priority'] <=> $b['priority'];
             });
         }
 
-        // agregar restricciones
-        $result = $this ->databaseAdapter ->getRestrictions(array_keys($permissionsIds), $onlyEnabled);
-        foreach ($result as $restriction) {
-            $key = $permissionsIds[$restriction['module_access_id']];
-            try {
-                $restriction['restriction_type'] = str_replace(' ', '_', $restriction['restriction_type']);
-                if (array_key_exists($restriction['restriction_category'], $permissions[$key]['restriction_list'])) {
-                    continue;
-                }
-
-                $permissions[$key]['restriction_list'][$restriction['restriction_category']] = [
-                    'id' => $restriction['id'],
-                    'type' => $restriction['restriction_type'],
-                    'data' => json_decode($restriction['restriction_value'], true)
-                ];
-            } catch (\Throwable $th) {
-                //todo: agregar un log de error
-            }
-        }
-
-        // Granularidad de permisos (categoria -> módulo)
-        $result = $this ->databaseAdapter ->getModulesAndCategories($modulesAndCategories['category'], $modulesAndCategories['module']);
-        $modulesAndCategories = ['category' => [], 'module' => []];
-        foreach ($result as $values) {
-            $modulesAndCategories['category'][$values['module_category_id']][$values['id']] = $values['id'];
-            $modulesAndCategories['module'][$values['id']] = $values;
-        }
-
+        # Ejecutar granularidad de permisos
         foreach ($permissions as $permission) {
             $result = [];
+            // Acceso por categoría
             if ($permission['to_entity_type'] === '0') {
-                $result = $modulesAndCategories['category'][$permission['to_entity_id']] ?? []; // Acceso por categoría
+                $result = $modulesBy['category'][$permission['to_entity_id']] ?? [];
             }
+            // Acceso por módulo
             elseif ($permission['to_entity_type'] === '1') {
-                $result[] = $permission['to_entity_id']; // Acceso por módulo
+                $result[] = $permission['to_entity_id']; 
             }
-
+            
+            // Almacenar minetras...
             foreach ($result as $moduleId) {
-                $moduleData = $modulesAndCategories['module'][$moduleId] ?? null;
+                $moduleData = $modulesBy['module'][$moduleId] ?? null;
+                // sea un modulo existente
                 if ($moduleData === null) {
                     continue;
                 }
+                // el permiso al modulo no se almaceno anteriormente (aqui es donde entra en juego el orden por medio del atribuyo "priority")
                 elseif (!array_key_exists($moduleData['code'], $response)) {
                     $response[$moduleData['code']] = [
                         'id' => $permission['id'],
                         'module_id' => $moduleData['id'],
                         'module_is_developing' => $moduleData['is_developing'],
                         'feature' => $permission['feature'],
-                        'level' => $permission['level'],
-                        'restriction_list' => $permission['restriction_list'],
-                        'is_disabled' => $permission['is_disabled']
+                        'level' => $permission['level']
                     ];
                 }
+            }
+        }
+
+        return $response;
+    }
+    
+    /**
+     * Consultar y depurar las restricciones de una entidad (y sus roles)
+     * 
+     * @return array Listado de restricciones
+     */
+    protected function getRestrictionsFromDB() : array {
+        $response = [];
+
+        if (empty($this ->databaseAdapter)) {
+            throw new DatabaseAdapterException('Database adapter not set.', 1);
+        }
+
+        # Obtener datos
+        // Roles
+        $roleData = $this ->getEntityRoleData();
+        // restricciones relacionados a la entidad y los roles asignados al mismo
+        $result = $this ->databaseAdapter ->getRestrictions($this ->entityType, $this ->entityId, $roleData['list']);
+        if (!is_array($result) || empty($result)) {
+            return $response;
+        }
+
+        # Depurar datos
+        $restrictions = [];
+        foreach ($result as $key => $record) {
+            // Asignar prioridad
+            // globales primero
+            if ($record['entity_type'] === null) {
+                $record['priority'] = -2; 
+            }
+            // personales despues
+            elseif ($record['entity_type'] === $this ->entityType) {
+                $record['priority'] = -1; 
+            }
+            // heredadas de ultimo
+            else {
+                $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100;
+            }
+
+            // Formatear y almacenar
+            $record['data'] = @json_decode($record['data'], true) ?? [];
+            $restrictions[$key] = $record;
+        }
+
+        // ordenar por prioridad 
+        if (!empty($roleData['priority'])) {
+            usort($restrictions, function(array $a, array $b) {
+                return $a['priority'] <=> $b['priority'];
+            });
+        }
+
+        # Ejecutar granularidad de restricciones
+        $categoryReserved  = []; // solo aplica para entidad y roles
+        foreach ($restrictions as $restriction) {
+            $flag = 'g'; // global
+            # Reservación de la categoría por la entidad o un rol asignado
+            if ($restriction['entity_type'] !== null) {
+                $entityKey = $restriction['entity_type'] . '_' . $restriction['entity_id'];
+                if (!array_key_exists($restriction['category_code'], $categoryReserved)) {
+                    $categoryReserved[$restriction['category_code']] = $entityKey;
+                }
+                elseif ($categoryFlags[$restriction['category_code']] !== $entityKey) {
+                    continue;
+                }
+                $flag = 'p';
+            }
+
+            # Almacenar restricción
+            $response[$restriction['category_code']] ??= [];
+            $response[$restriction['category_code']][$restriction['type_code']] ??= [];
+            if (!array_key_exists($flag, $response[$restriction['category_code']][$restriction['type_code']])) {
+                $response[$restriction['category_code']][$restriction['type_code']][$flag] = [
+                    'id' => $restriction['id'],
+                    'entity_type' => $restriction['entity_type'],
+                    'entity_id' => $restriction['entity_id'],
+                    'category_code' => $restriction['category_code'],
+                    'type_code' => $restriction['type_code'],
+                    'data' => $restriction['data']
+                ];
             }
         }
 
