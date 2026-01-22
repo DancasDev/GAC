@@ -21,9 +21,9 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
             }
 
             try {
-                $this ->connection = new PDO('mysql:host=' . $host . ';dbname=' . $database, $username, $password);
+                $this ->connection = new PDO('mysql:host=' . $params['host'] . ';dbname=' . $params['database'], $params['username'], $params['password']);
             } catch (\Throwable $th) {
-                throw new DatabaseAdapterException('Error connecting to database "' . $database . '"', 0, $th);
+                throw new DatabaseAdapterException('Error connecting to database "' . $params['database'] . '"', 0, $th);
             }
         }
         else {
@@ -85,7 +85,7 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
 
         $query = 'SELECT a.id, a.entity_type, a.entity_id, c.code AS category_code, b.code AS type_code, a.data';
         $query .= ' FROM `gac_restriction` AS a INNER JOIN `gac_restriction_method` AS b ON a.restriction_method_id = b.id INNER JOIN `gac_restriction_category` AS c ON b.restriction_category_id = c.id';
-        $query .= ' WHERE (a.entity_type IS NULL OR (a.entity_type = ? AND a.entity_id = ?)';
+        $query .= ' WHERE ((a.entity_type = ? AND a.entity_id = ?)';
         foreach ($roleIds as $key => $id) {
             $query .= ' OR (a.entity_type = \'0\' AND a.entity_id = ?)';
         }
