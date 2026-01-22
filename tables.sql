@@ -106,7 +106,7 @@ INSERT INTO `gac_module_category` (`id`, `name`, `description`, `is_disabled`, `
 DROP TABLE IF EXISTS `gac_restriction`;
 CREATE TABLE IF NOT EXISTS `gac_restriction` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `entity_type` enum('0','1','2') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = Cliente (gac_client), NULL = Todos',
+  `entity_type` enum('0','1','2','3') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '0 = Rol (acc_role), 1 = Usuario (acc_user), 2 = Cliente (gac_client), 3 = Todos',
   `entity_id` int NOT NULL,
   `restriction_method_id` int NOT NULL COMMENT 'Tipo de restricción',
   `data` text COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Datos para la validación de la restricción.',

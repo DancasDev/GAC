@@ -352,7 +352,7 @@ class GAC {
         foreach ($result as $key => $record) {
             // Asignar prioridad
             // globales primero
-            if ($record['entity_type'] === null) {
+            if ($record['entity_type'] === '3') {
                 $record['priority'] = -2; 
             }
             // personales despues
@@ -381,7 +381,7 @@ class GAC {
         foreach ($restrictions as $restriction) {
             $flag = 'g'; // global
             # Reservación de la categoría por la entidad o un rol asignado
-            if ($restriction['entity_type'] !== null) {
+            if ($restriction['entity_type'] !== '3') {
                 $entityKey = $restriction['entity_type'] . '_' . $restriction['entity_id'];
                 if (!array_key_exists($restriction['category_code'], $categoryReserved)) {
                     $categoryReserved[$restriction['category_code']] = $entityKey;
