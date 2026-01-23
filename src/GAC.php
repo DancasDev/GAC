@@ -198,6 +198,37 @@ class GAC {
     }
 
     /**
+     * Limpiar cache 
+     * 
+     * @param bool $includeGlobal - Indica si se eliminan también las restricciones globales
+     * 
+     * @throws CacheAdapterException
+     * 
+     * @return bool TRUE en caso de éxito, FALSE en caso de fallo.
+     */
+    public function clearCache(bool $includeGlobal = false) : bool {
+        if (empty($this ->cacheAdapter)) {
+            throw new CacheAdapterException('Cache adapter not set.', 1);
+        }
+
+        # Permisos
+        $cacheKey = $this ->getCacheKey('permissions');
+        $this ->cacheAdapter ->delete($cacheKey);
+
+        # Restricciones
+        $cacheKey = $this ->getCacheKey('restrictions');
+        $this ->cacheAdapter ->delete($cacheKey);
+
+        // globales
+        if ($includeGlobal) {
+            $cacheKey = $this ->getCacheKey('restrictions_global');
+            $this ->cacheAdapter ->delete($cacheKey);
+        }       
+
+        return true;
+    }
+
+    /**
      * Obtener registros desde la cache
      * 
      * @param string $type - tipo de carga ['permissions','restrictions']
