@@ -98,19 +98,6 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         return $query ->fetchAll(PDO::FETCH_ASSOC);
     }
 
-     /**
-     * Esta función recupera datos de módulos en función de los ids proporcionados de los modulos y/o categorías.
-     * 
-     * @param array $moduleIds - Arreglo de identificadores de módulos (opcional).
-     * @param array $categoryIds - Arreglo de identificadores de categorías de módulos (opcional).
-     * 
-     * @return array Arreglo de datos de módulos y categorías.
-     * 
-     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
-     *  - id: Identificador del módulo.
-     *  - module_category_id: Identificador de la categoría de módulo.
-     */
-
     public function getModulesData(array $categoryIds = [], array $moduleIds = []): array {
         $hasModules = !empty($moduleIds);
         $hasCategories = !empty($categoryIds);
@@ -127,6 +114,18 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         }
         $query .= ') AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
 
+        $query = $this ->connection ->prepare($query);
+        $query ->execute();
+
+        return $query ->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    function getEntitiesByRoles(array $roleIds): array {
+        if (empty($roleIds)) {
+            return [];
+        }
+
+        $query = 'SELECT id, role_id, entity_type, entity_id FROM `gac_role_entity` WHERE role_id IN (' . implode(',', $roleIds) . ') AND is_disabled = \'0\' AND deleted_at IS NULL';
         $query = $this ->connection ->prepare($query);
         $query ->execute();
 
