@@ -33,7 +33,7 @@ class GAC {
         return $this;
     }
 
-    public function setCachekey(string $prefix) : GAC {
+    public function setCacheKey(string $prefix) : GAC {
         $this ->cachekey = $prefix;
         return $this;
     }
@@ -47,14 +47,13 @@ class GAC {
     }
 
     public function getCacheKey(string $type) : string {
-        if ($type == 'permissions') {
-            $type = 'p';
+        if ($type == 'restrictions_global') {
+            return $this ->cachekey . '_r_global';
         }
-        elseif ($type == 'restrictions') {
-            $type = 'r';
+        else {
+            $type = substr($type, 0, 1);
+            return $this ->cachekey . '_' . $type . '_' . $this ->entityType . '_' . $this ->entityId;
         }
-        
-        return $this ->cachekey . '_' . $type . '_' . $this ->entityType . '_' . $this ->entityId;
     }
 
     public function getEntityRoleData(bool $reset = false) {
@@ -81,7 +80,7 @@ class GAC {
      * 
      * @return GAC
      */
-    public function setDatabaseAdapter($params) : GAC {
+    public function setDatabase($params) : GAC {
         if (is_array($params) || $params instanceof PDO) {
             $this ->databaseAdapter = new DatabaseAdapter($params);
         }
@@ -164,22 +163,144 @@ class GAC {
      * @return Restrictions
      */
     public function getRestrictions(bool $fromCache = true) : Restrictions {
-        $type = 'restrictions';
         if (empty($this ->entityType) || empty($this ->entityId)) {
             throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
 
-        $restrictions = null;
+        // Cache
+        $restrictionsP = null;
+        $restrictionsG = null;
         if ($fromCache) {
-            $restrictions = $this ->getFromCache($type);
+            $restrictionsG = $this ->getFromCache('restrictions_global');
+            $restrictionsP = $this ->getFromCache('restrictions');
         }
 
-        if (!is_array($restrictions)) {
-            $restrictions = $this ->getRestrictionsFromDB();
-            $this ->saveToCache($type, $restrictions);
+        // Base de datos
+        if (!is_array($restrictionsG)) {
+            $restrictionsG = $this ->getRestrictionsFromDB(true);
+            $this ->saveToCache('restrictions_global', $restrictionsG);
+        }
+        if (!is_array($restrictionsP)) {
+            $restrictionsP = $this ->getRestrictionsFromDB(false);
+            $this ->saveToCache('restrictions', $restrictionsP);
+        }
+
+        // Formatear
+        $restrictions = [];
+        foreach ($restrictionsG as $restriction) {
+            $restrictions[$restriction['category_code']][$restriction['type_code']]['g'] = $restriction;
+        }
+        foreach ($restrictionsP as $restriction) {
+            $restrictions[$restriction['category_code']][$restriction['type_code']]['p'] = $restriction;
         }
 
         return new Restrictions($restrictions);
+    }
+
+    /**
+     * Limpiar cache 
+     * 
+     * @param bool $includeGlobal - Indica si se eliminan también las restricciones globales
+     * 
+     * @throws CacheAdapterException
+     * 
+     * @return bool TRUE en caso de éxito, FALSE en caso de fallo.
+     */
+    public function clearCache(bool $includeGlobal = false) : bool {
+        if (empty($this ->cacheAdapter)) {
+            throw new CacheAdapterException('Cache adapter not set.', 1);
+        }
+
+        # Permisos
+        $cacheKey = $this ->getCacheKey('permissions');
+        $this ->cacheAdapter ->delete($cacheKey);
+
+        # Restricciones
+        $cacheKey = $this ->getCacheKey('restrictions');
+        $this ->cacheAdapter ->delete($cacheKey);
+
+        // globales
+        if ($includeGlobal) {
+            $cacheKey = $this ->getCacheKey('restrictions_global');
+            $this ->cacheAdapter ->delete($cacheKey);
+        }       
+
+        return true;
+    }
+    
+    /**
+     * Purga los permisos almacenados en caché según ciertos criterios.
+     * 
+     * @param string $entityType - Entidad (user, client, role, global).
+     * @param array $entityIds - IDs de las entidades.
+     * 
+     * @return bool
+     */
+    public function purgePermissionsBy(string $entityType, array $entityIds = []) : bool {
+        return $this ->purgeCacheBy('permissions', $entityType, $entityIds);
+    }
+    
+    /**
+     * Purga las restricciones almacenadas en caché según ciertos criterios.
+     * 
+     * @param string $entityType - Entidad (user, client, role, global).
+     * @param array $entityIds - IDs de las entidades.
+     * 
+     * @return bool
+     */
+    public function purgeRestrictionsBy(string $entityType, array $entityIds = []) : bool {
+        return $this ->purgeCacheBy('restrictions', $entityType, $entityIds);
+    }
+
+    /**
+     * Purga los datos almacenados en caché según ciertos criterios.
+     * 
+     * @param string $type - Tipo de datos (permissions, restrictions).
+     * @param string $entityType - Entidad (user, client, role, global).
+     * @param array $entityIds - IDs de las entidades.
+     * 
+     * @return bool
+     */
+    protected function purgeCacheBy(string $type, string $entityType, array $entityIds = []) : bool {
+        if (empty($this ->cacheAdapter)) {
+            throw new CacheAdapterException('Cache adapter not set.', 1);
+        }
+
+        $type = substr($type, 0, 1);
+        if ($entityType == 'global') {
+            $this ->cacheAdapter ->deleteMatching($this ->cachekey . '_' . $type . '_*');
+        }
+        else {
+            if (empty($entityIds)) {
+                return false;
+            }
+
+            # Obtener lista de la entidades a purgar
+            $list = []; // (user/client -> IDs)
+            if ($entityType == 'user') {
+                $list['1'] = $entityIds;
+            }
+            elseif ($entityType == 'client') {
+                $list['2'] = $entityIds;
+            }
+            elseif($entityType == 'role') {
+                $result = $this ->databaseAdapter ->getEntitiesByRoles($entityIds);
+                foreach ($result as $record) {
+                    $list[$record['entity_type']] ??= [];
+                    $list[$record['entity_type']][$record['entity_id']] = $record['entity_id'];
+                }
+            }
+            
+            # Purga listas
+            foreach ($list as $entityKey => $subList) {
+                foreach ($subList as $entityId) {
+                    $entityId = (string) $entityId;
+                    $this ->cacheAdapter ->delete($this ->cachekey . '_' . $type . '_' . $entityKey . '_' . $sub);
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -327,86 +448,98 @@ class GAC {
     }
     
     /**
-     * Consultar y depurar las restricciones de una entidad (y sus roles)
+     * Consultar restricciones de la entidad (y sus roles) o globales
+     * 
+     * @param bool $isGlobal - Indica si se obtienen restricciones globales
      * 
      * @return array Listado de restricciones
      */
-    protected function getRestrictionsFromDB() : array {
+    protected function getRestrictionsFromDB(bool $isGlobal = false) : array {
         $response = [];
 
         if (empty($this ->databaseAdapter)) {
             throw new DatabaseAdapterException('Database adapter not set.', 1);
         }
-
         # Obtener datos
-        // Roles
-        $roleData = $this ->getEntityRoleData();
-        // restricciones relacionados a la entidad y los roles asignados al mismo
-        $result = $this ->databaseAdapter ->getRestrictions($this ->entityType, $this ->entityId, $roleData['list']);
+        $entityType = '3'; // tipo de entidad global
+        $entityId = '0'; // id irrelevante
+        $roleIds = [];
+        if (!$isGlobal) {
+            $entityType = $this ->entityType;
+            $entityId = $this ->entityId;
+            $result = $this ->getEntityRoleData();
+            $roleIds = $result['list'];
+        }
+
+        $result = $this ->databaseAdapter ->getRestrictions($entityType, $entityId, $roleIds);
         if (!is_array($result) || empty($result)) {
             return $response;
         }
 
         # Depurar datos
-        $restrictions = [];
-        foreach ($result as $key => $record) {
-            // Asignar prioridad
-            // globales primero
-            if ($record['entity_type'] === '3') {
-                $record['priority'] = -2; 
-            }
-            // personales despues
-            elseif ($record['entity_type'] === $this ->entityType) {
-                $record['priority'] = -1; 
-            }
-            // heredadas de ultimo
-            else {
-                $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100;
-            }
-
-            // Formatear y almacenar
-            $record['data'] = @json_decode($record['data'], true) ?? [];
-            $restrictions[$key] = $record;
-        }
-
-        // ordenar por prioridad 
-        if (!empty($roleData['priority'])) {
-            usort($restrictions, function(array $a, array $b) {
-                return $a['priority'] <=> $b['priority'];
-            });
-        }
-
-        # Ejecutar granularidad de restricciones
-        $categoryReserved  = []; // solo aplica para entidad y roles
-        foreach ($restrictions as $restriction) {
-            $flag = 'g'; // global
-            # Reservación de la categoría por la entidad o un rol asignado
-            if ($restriction['entity_type'] !== '3') {
-                $entityKey = $restriction['entity_type'] . '_' . $restriction['entity_id'];
-                if (!array_key_exists($restriction['category_code'], $categoryReserved)) {
-                    $categoryReserved[$restriction['category_code']] = $entityKey;
+        if (!$isGlobal) {
+            foreach ($result as $key => $record) {
+                // Asignar prioridad
+                if ($record['entity_type'] === $this ->entityType) {
+                    $record['priority'] = -1; // personales primero
                 }
-                elseif ($categoryFlags[$restriction['category_code']] !== $entityKey) {
+                else {
+                    $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100; // heredadas de roles despues
+                }
+
+                // Formatear y almacenar
+                $record['data'] = @json_decode($record['data'], true) ?? [];
+                $response[] = [
+                    'id' => $record['id'],
+                    'priority' => $record['priority'],
+                    'entity_type' => $record['entity_type'],
+                    'entity_id' => $record['entity_id'],
+                    'category_code' => $record['category_code'],
+                    'type_code' => $record['type_code'],
+                    'data' => $record['data']
+                ];
+            }
+            
+            // ordenar por prioridad 
+            if (!empty($roleData['priority'])) {
+                usort($response, function(array $a, array $b) {
+                    return $a['priority'] <=> $b['priority'];
+                });
+            }
+
+            // Descartar duplicados por granularidad
+            $result = [];
+            $reservationList  = []; // una sola reserva por categoría
+            foreach ($response as $restriction) {
+                $entityKey = $restriction['entity_type'] . '_' . $restriction['entity_id'];
+                $reservationList[$restriction['category_code']] ??= $entityKey; // asignar reserva si no existe
+                // si ya existe una reserva y no es la misma, descartar
+                if ($reservationList[$restriction['category_code']] !== $entityKey) {
                     continue;
                 }
-                $flag = 'p';
+
+                // Almacenar restricción
+                unset($restriction['priority']); // ya no es necesario
+                $result[] = $restriction;
             }
 
-            # Almacenar restricción
-            $response[$restriction['category_code']] ??= [];
-            $response[$restriction['category_code']][$restriction['type_code']] ??= [];
-            if (!array_key_exists($flag, $response[$restriction['category_code']][$restriction['type_code']])) {
-                $response[$restriction['category_code']][$restriction['type_code']][$flag] = [
-                    'id' => $restriction['id'],
-                    'entity_type' => $restriction['entity_type'],
-                    'entity_id' => $restriction['entity_id'],
-                    'category_code' => $restriction['category_code'],
-                    'type_code' => $restriction['type_code'],
-                    'data' => $restriction['data']
+            // Almacenar
+            $response = $result;
+        }
+        else {
+            foreach ($result as $key => $record) {
+                $record['data'] = @json_decode($record['data'], true) ?? [];
+                $response[] = [
+                    'id' => $record['id'],
+                    'entity_type' => $record['entity_type'],
+                    'entity_id' => $record['entity_id'],
+                    'category_code' => $record['category_code'],
+                    'type_code' => $record['type_code'],
+                    'data' => $record['data']
                 ];
             }
         }
-
+        
         return $response;
     }
 }

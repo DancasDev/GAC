@@ -49,7 +49,7 @@ interface DatabaseAdapterInterface {
      * 
      * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
      *  - id: Identificador de la restricción.
-     *  - entity_type: Tipo de entidad que posee e la restricción ('0' para rol , '1' para usuario, '2' para cliente, null para todos).
+     *  - entity_type: Tipo de entidad que posee e la restricción ('0' para rol , '1' para usuario, '2' para cliente, '3' para todos).
      *  - entity_id: Identificador de la entidad que posee e la restricción.
      *  - category_code: Código de la categoría de la restricción.
      *  - type_code: Código del tipo de restricción
@@ -72,4 +72,19 @@ interface DatabaseAdapterInterface {
      *  - is_developing: Indica si el módulo está en desarrollo ('0' es No, '1' es Sí).
      */
     public function getModulesData(array $categoryIds = [], array $moduleIds = []): array;
+
+    /**
+     * Obtener entidades relacionadas a determinados roles.
+     * 
+     * @param array - $roleIds Arreglo de identificadores de roles.
+     * 
+     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
+     *  - id: Identificador de la relación.
+     *  - role_id: Identificador del rol.
+     *  - entity_type: Tipo de entidad ('1' para usuario, '2' para cliente).    
+     *  - entity_id: Identificador de la entidad.
+     * 
+     * @return array Arreglo de entidades relacionadas a los roles.
+     */
+    public function getEntitiesByRoles(array $roleIds): array;
 }

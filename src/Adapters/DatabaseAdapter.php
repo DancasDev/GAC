@@ -21,9 +21,9 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
             }
 
             try {
-                $this ->connection = new PDO('mysql:host=' . $host . ';dbname=' . $database, $username, $password);
+                $this ->connection = new PDO('mysql:host=' . $params['host'] . ';dbname=' . $params['database'], $params['username'], $params['password']);
             } catch (\Throwable $th) {
-                throw new DatabaseAdapterException('Error connecting to database "' . $database . '"', 0, $th);
+                throw new DatabaseAdapterException('Error connecting to database "' . $params['database'] . '"', 0, $th);
             }
         }
         else {
@@ -50,7 +50,7 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         $query = 'SELECT b.id, b.code, a.priority';
         $query .= ' FROM `gac_role_entity` AS a INNER JOIN `gac_role` AS b ON a.role_id = b.id';
         $query .= ' WHERE a.entity_type = :entity_type AND a.entity_id = :entity_id AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
-        $qeury .= ' ORDER BY a.priority ASC';
+        $query .= ' ORDER BY a.priority ASC';
         $query = $this ->connection ->prepare($query);
         $query ->bindParam(':entity_type', $entityType, PDO::PARAM_INT);
         $query ->bindParam(':entity_id', $entityId, PDO::PARAM_INT);
@@ -85,7 +85,7 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
 
         $query = 'SELECT a.id, a.entity_type, a.entity_id, c.code AS category_code, b.code AS type_code, a.data';
         $query .= ' FROM `gac_restriction` AS a INNER JOIN `gac_restriction_method` AS b ON a.restriction_method_id = b.id INNER JOIN `gac_restriction_category` AS c ON b.restriction_category_id = c.id';
-        $query .= ' WHERE (a.entity_type IS NULL OR (a.entity_type = ? AND a.entity_id = ?)';
+        $query .= ' WHERE ((a.entity_type = ? AND a.entity_id = ?)';
         foreach ($roleIds as $key => $id) {
             $query .= ' OR (a.entity_type = \'0\' AND a.entity_id = ?)';
         }
@@ -97,19 +97,6 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
 
         return $query ->fetchAll(PDO::FETCH_ASSOC);
     }
-
-     /**
-     * Esta función recupera datos de módulos en función de los ids proporcionados de los modulos y/o categorías.
-     * 
-     * @param array $moduleIds - Arreglo de identificadores de módulos (opcional).
-     * @param array $categoryIds - Arreglo de identificadores de categorías de módulos (opcional).
-     * 
-     * @return array Arreglo de datos de módulos y categorías.
-     * 
-     * La estructura del arreglo depende de la información almacenada en la base de datos, pero podría incluir campos como:
-     *  - id: Identificador del módulo.
-     *  - module_category_id: Identificador de la categoría de módulo.
-     */
 
     public function getModulesData(array $categoryIds = [], array $moduleIds = []): array {
         $hasModules = !empty($moduleIds);
@@ -127,6 +114,18 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         }
         $query .= ') AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
 
+        $query = $this ->connection ->prepare($query);
+        $query ->execute();
+
+        return $query ->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    function getEntitiesByRoles(array $roleIds): array {
+        if (empty($roleIds)) {
+            return [];
+        }
+
+        $query = 'SELECT id, role_id, entity_type, entity_id FROM `gac_role_entity` WHERE role_id IN (' . implode(',', $roleIds) . ') AND is_disabled = \'0\' AND deleted_at IS NULL';
         $query = $this ->connection ->prepare($query);
         $query ->execute();
 

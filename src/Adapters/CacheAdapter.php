@@ -96,4 +96,35 @@ class CacheAdapter implements CacheAdapterInterface {
             return false;
         }
     }
+
+    public function deleteMatching(string $pattern) : int {
+        if (empty($this ->cacheDir) || empty($pattern)) {
+            return 0;
+        }
+
+        $deletedCount = 0;
+        $files = glob($this->cacheDir . DIRECTORY_SEPARATOR . $pattern);
+        foreach ($files as $file) {
+            if (is_file($file) && unlink($file)) {
+                $deletedCount++;
+            }
+        }
+
+        return $deletedCount;
+    }
+
+    public function clear() : bool {
+        if (empty($this ->cacheDir)) {
+            return false;
+        }
+
+        $files = glob($this->cacheDir . DIRECTORY_SEPARATOR . '*');
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                unlink($file);
+            }
+        }
+
+        return true;
+    }
 }
