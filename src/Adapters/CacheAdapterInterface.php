@@ -32,4 +32,20 @@ interface CacheAdapterInterface {
    * @return bool TRUE en caso de éxito, FALSE en caso de fallo.
    */
   public function delete(string $key): bool;
+
+  /**
+   * Elimina todos los valores del caché que coincidan con un patrón.
+   * 
+   * @param string $pattern - Patron con estilo "glob" para coincidir con las claves a eliminar.
+   * 
+   * @return int Número de elementos eliminados. 
+   */
+  public function deleteMatching(string $pattern) : int;
+
+  /**
+   * Elimina todos los valores del caché.
+   * 
+   * @return bool TRUE en caso de éxito, FALSE en caso de fallo.
+   */
+  public function clear() : bool;
 }
