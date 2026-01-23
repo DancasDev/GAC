@@ -80,7 +80,7 @@ class GAC {
      * 
      * @return GAC
      */
-    public function setDatabaseAdapter($params) : GAC {
+    public function setDatabase($params) : GAC {
         if (is_array($params) || $params instanceof PDO) {
             $this ->databaseAdapter = new DatabaseAdapter($params);
         }
