@@ -33,7 +33,7 @@ class GAC {
         return $this;
     }
 
-    public function setCachekey(string $prefix) : GAC {
+    public function setCacheKey(string $prefix) : GAC {
         $this ->cachekey = $prefix;
         return $this;
     }
@@ -224,6 +224,81 @@ class GAC {
             $cacheKey = $this ->getCacheKey('restrictions_global');
             $this ->cacheAdapter ->delete($cacheKey);
         }       
+
+        return true;
+    }
+    
+    /**
+     * Purga los permisos almacenados en caché según ciertos criterios.
+     * 
+     * @param string $entityType - Entidad (user, client, role, global).
+     * @param array $entityIds - IDs de las entidades.
+     * 
+     * @return bool
+     */
+    public function purgePermissionsBy(string $entityType, array $entityIds = []) : bool {
+        return $this ->purgeCacheBy('permissions', $entityType, $entityIds);
+    }
+    
+    /**
+     * Purga las restricciones almacenadas en caché según ciertos criterios.
+     * 
+     * @param string $entityType - Entidad (user, client, role, global).
+     * @param array $entityIds - IDs de las entidades.
+     * 
+     * @return bool
+     */
+    public function purgeRestrictionsBy(string $entityType, array $entityIds = []) : bool {
+        return $this ->purgeCacheBy('restrictions', $entityType, $entityIds);
+    }
+
+    /**
+     * Purga los datos almacenados en caché según ciertos criterios.
+     * 
+     * @param string $type - Tipo de datos (permissions, restrictions).
+     * @param string $entityType - Entidad (user, client, role, global).
+     * @param array $entityIds - IDs de las entidades.
+     * 
+     * @return bool
+     */
+    protected function purgeCacheBy(string $type, string $entityType, array $entityIds = []) : bool {
+        if (empty($this ->cacheAdapter)) {
+            throw new CacheAdapterException('Cache adapter not set.', 1);
+        }
+
+        $type = substr($type, 0, 1);
+        if ($entityType == 'global') {
+            $this ->cacheAdapter ->deleteMatching($this ->cachekey . '_' . $type . '_*');
+        }
+        else {
+            if (empty($entityIds)) {
+                return false;
+            }
+
+            # Obtener lista de la entidades a purgar
+            $list = []; // (user/client -> IDs)
+            if ($entityType == 'user') {
+                $list['1'] = $entityIds;
+            }
+            elseif ($entityType == 'client') {
+                $list['2'] = $entityIds;
+            }
+            elseif($entityType == 'role') {
+                $result = $this ->databaseAdapter ->getEntitiesByRoles($entityIds);
+                foreach ($result as $record) {
+                    $list[$record['entity_type']] ??= [];
+                    $list[$record['entity_type']][$record['entity_id']] = $record['entity_id'];
+                }
+            }
+            
+            # Purga listas
+            foreach ($list as $entityKey => $subList) {
+                foreach ($subList as $entityId) {
+                    $entityId = (string) $entityId;
+                    $this ->cacheAdapter ->delete($this ->cachekey . '_' . $type . '_' . $entityKey . '_' . $sub);
+                }
+            }
+        }
 
         return true;
     }
