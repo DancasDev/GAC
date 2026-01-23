@@ -50,7 +50,7 @@ class DatabaseAdapter implements DatabaseAdapterInterface {
         $query = 'SELECT b.id, b.code, a.priority';
         $query .= ' FROM `gac_role_entity` AS a INNER JOIN `gac_role` AS b ON a.role_id = b.id';
         $query .= ' WHERE a.entity_type = :entity_type AND a.entity_id = :entity_id AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
-        $qeury .= ' ORDER BY a.priority ASC';
+        $query .= ' ORDER BY a.priority ASC';
         $query = $this ->connection ->prepare($query);
         $query ->bindParam(':entity_type', $entityType, PDO::PARAM_INT);
         $query ->bindParam(':entity_id', $entityId, PDO::PARAM_INT);
