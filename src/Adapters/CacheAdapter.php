@@ -55,12 +55,12 @@ class CacheAdapter implements CacheAdapterInterface {
             $data = null;
         }
         
-        if (empty($data) || (!empty($data['ttl']) && $data['ttl'] < time())) {
+        if (empty($data) || (!empty($data['t']) && $data['t'] < time())) {
             $this->delete($key);
             return null;
         }
 
-        return $data['value'] ?? null;
+        return $data['v'] ?? null;
     }
 
     public function save(string $key, $data, int|null $ttl = 60): bool {
@@ -70,8 +70,8 @@ class CacheAdapter implements CacheAdapterInterface {
 
         $file = $this->cacheDir . DIRECTORY_SEPARATOR . $key;
         $dataToSave = [
-            'ttl' => empty($ttl) ? null : time() + $ttl,
-            'value' => $data
+            't' => empty($ttl) ? null : time() + $ttl,
+            'v' => $data
         ];
 
         try {
