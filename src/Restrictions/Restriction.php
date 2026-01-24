@@ -46,7 +46,7 @@ class Restriction {
             }
 
             foreach ($restrictions as $restriction) {
-                $result = $this ->{$this ->methods[$method]}($restriction['data'], $externalData);
+                $result = $this ->{$this ->methods[$method]}($restriction['d'], $externalData);
                 if (!$result) {
                     $this ->error = [
                         'method' => $method,

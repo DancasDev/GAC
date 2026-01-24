@@ -19,7 +19,7 @@ final class ByEntity extends Restriction {
     public function allow(array $internalData, array $externalData) : bool {
         # Procesar datos
         // internos
-        if (!$this ->validateDataIntegrity($internalData, ['list' => ['array']])) {
+        if (!$this ->validateDataIntegrity($internalData, ['l' => ['array']])) {
             return false;
         }
         // externos
@@ -28,7 +28,7 @@ final class ByEntity extends Restriction {
         }
 
         # Validar        
-        if (!in_array($externalData['entity'], $internalData['list'])) {
+        if (!in_array($externalData['entity'], $internalData['l'])) {
             return false;
         }
 
@@ -43,7 +43,7 @@ final class ByEntity extends Restriction {
     public function deny(array $internalData, array $externalData) : bool {
         # Procesar datos
         // internos
-        if (!$this ->validateDataIntegrity($internalData, ['list' => ['array']])) {
+        if (!$this ->validateDataIntegrity($internalData, ['l' => ['array']])) {
             return false;
         }
         // externos
@@ -52,7 +52,7 @@ final class ByEntity extends Restriction {
         }
 
         # Validar        
-        if (in_array($externalData['entity'], $internalData['list'])) {
+        if (in_array($externalData['entity'], $internalData['l'])) {
             return false;
         }
 

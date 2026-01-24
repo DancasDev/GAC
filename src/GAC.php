@@ -186,14 +186,7 @@ class GAC {
         }
 
         // Formatear
-        $restrictions = [];
-        foreach ($restrictionsG as $restriction) {
-            $restrictions[$restriction['category_code']][$restriction['type_code']]['g'] = $restriction;
-        }
-        foreach ($restrictionsP as $restriction) {
-            $restrictions[$restriction['category_code']][$restriction['type_code']]['p'] = $restriction;
-        }
-
+        $restrictions = array_merge_recursive($restrictionsG, $restrictionsP);
         return new Restrictions($restrictions);
     }
 
@@ -518,8 +511,10 @@ class GAC {
                 }
 
                 // Almacenar restricción
-                unset($restriction['priority']); // ya no es necesario
-                $result[] = $restriction;
+                $result[$restriction['category_code']][$restriction['type_code']]['p'] = [
+                    'i' => $restriction['id'],
+                    'd' => $restriction['data']
+                ];
             }
 
             // Almacenar
@@ -527,14 +522,9 @@ class GAC {
         }
         else {
             foreach ($result as $key => $record) {
-                $record['data'] = @json_decode($record['data'], true) ?? [];
-                $response[] = [
-                    'id' => $record['id'],
-                    'entity_type' => $record['entity_type'],
-                    'entity_id' => $record['entity_id'],
-                    'category_code' => $record['category_code'],
-                    'type_code' => $record['type_code'],
-                    'data' => $record['data']
+                $response[$record['category_code']][$record['type_code']]['g'] = [
+                    'i' => $record['id'],
+                    'd' => (@json_decode($record['data'], true) ?? [])
                 ];
             }
         }
