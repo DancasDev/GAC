@@ -434,11 +434,10 @@ class GAC {
                 // el permiso al modulo no se almaceno anteriormente (aqui es donde entra en juego el orden por medio del atribuyo "priority")
                 elseif (!array_key_exists($moduleData['code'], $response)) {
                     $response[$moduleData['code']] = [
-                        'id' => $permission['id'],
-                        'module_id' => $moduleData['id'],
-                        'module_is_developing' => $moduleData['is_developing'],
-                        'feature' => $permission['feature'],
-                        'level' => $permission['level']
+                        'i' => $permission['id'],
+                        'd' => $moduleData['is_developing'],
+                        'f' => $permission['feature'],
+                        'l' => $permission['level']
                     ];
                 }
             }
