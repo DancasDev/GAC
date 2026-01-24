@@ -7,8 +7,8 @@ use DancasDev\GAC\Restrictions\ByEntity;
 
 class Restrictions {
     protected array $list = [];
-    protected array $categories = [
-        'by_date' => ByDate::class,
+    protected static array $restrictionMap = [
+        'by_date'   => ByDate::class,
         'by_branch' => ByEntity::class,
     ];
 
@@ -42,11 +42,28 @@ class Restrictions {
             throw new \Exception('The restriction data for category "'. $categoryCode . '" is invalid.', 1);
         }
 
-        if (!array_key_exists($categoryCode, $this ->categories)) {
-            throw new \Exception('The restriction category "'. $categoryCode . '" is not supported.', 1);
+        if (!array_key_exists($categoryCode, self::$restrictionMap)) {
+            throw new \Exception('No handler defined for restriction category: "' . $categoryCode . '"', 1);
         }
 
-        $className = $this ->categories[$categoryCode];
-        return new $className($this ->list[$categoryCode]);
+        $className = self::$restrictionMap[$categoryCode];
+        $data = $this->list[$categoryCode];
+
+        return new $className($data);
+    }
+
+    /**
+     * Registrar una nueva clase de restricción
+     * 
+     * @param string $alias - Alias para la clase de restricción
+     * @param string $className - Nombre completo de la clase de restricción
+     * 
+     * @return void
+     */
+    public static function register(string $alias, string $className): void {
+        if (!is_subclass_of($className, Restriction::class)) {
+            throw new \InvalidArgumentException('The class "' . $className . '" must extend the base Restriction class.', 1);
+        }
+        self::$restrictionMap[$alias] = $className;
     }
 }
