@@ -6,27 +6,21 @@ final class Permission {
     protected $id;
     protected $feature;
     protected $level;
-    protected $module_id;
     protected $module_code;
     protected $module_is_developing;
     
     protected $featureKeys = ['create' => '0', 'read' => '1', 'update' => '2', 'delete' => '3', 'trash' => '4', 'dev' => '5'];
 
     public function __construct(array $data) {
-        $this->id = $data['id'] ?? null;
-        $this->feature = $data['feature'] ?? null;
-        $this->level = $data['level'] ?? null;
-        $this->module_id = $data['module_id'] ?? null;
-        $this->module_code = $data['module_code'] ?? null;
-        $this->module_is_developing = $data['module_is_developing'] ?? null;
+        $this->id = $data['i'] ?? null;
+        $this->feature = $data['f'] ?? null;
+        $this->level = $data['l'] ?? null;
+        $this->module_code = $data['m'] ?? null;
+        $this->module_is_developing = $data['d'] ?? null;
     }
     
     public function getId() : int {
         return $this->id;
-    }
-
-    public function getModuleId() : int {
-        return $this->module_id;
     }
 
     public function getModuleCode() : string {

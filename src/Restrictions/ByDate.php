@@ -21,9 +21,9 @@ final class ByDate extends Restriction {
     public function before(array $internalData, array $externalData) : bool {
         # Procesar datos
         // internos
-        if ($this ->validateDataIntegrity($internalData, ['date' => ['string']])) {
-            $internalData['date'] = $this ->formatDate($internalData['date']);
-            if (!$internalData['date']) {
+        if ($this ->validateDataIntegrity($internalData, ['d' => ['string']])) {
+            $internalData['d'] = $this ->formatDate($internalData['d']);
+            if (!$internalData['d']) {
                 return false;
             }
         }
@@ -36,7 +36,7 @@ final class ByDate extends Restriction {
         }
 
         # Validar        
-        if ($externalData['date'] >= $internalData['date']) {
+        if ($externalData['date'] >= $internalData['d']) {
             return false;
         }
 
@@ -51,10 +51,10 @@ final class ByDate extends Restriction {
     public function inRange(array $internalData, array $externalData) : bool {
         # Procesar datos
         // internos
-        if ($this ->validateDataIntegrity($internalData, ['start' => ['string'], 'end' => ['string']])) {
-            $internalData['start'] = $this ->formatDate($internalData['start']);
-            $internalData['end'] = $this ->formatDate($internalData['end']);
-            if (!$internalData['start'] || !$internalData['end']) {
+        if ($this ->validateDataIntegrity($internalData, ['sd' => ['string'], 'ed' => ['string']])) {
+            $internalData['sd'] = $this ->formatDate($internalData['sd']);
+            $internalData['ed'] = $this ->formatDate($internalData['ed']);
+            if (!$internalData['sd'] || !$internalData['ed']) {
                 return false;
             }
         }
@@ -67,7 +67,7 @@ final class ByDate extends Restriction {
         }
 
         # Validar
-        if (!($externalData['date'] >= $internalData['start'] && $externalData['date'] <= $internalData['end'])) {
+        if (!($externalData['date'] >= $internalData['sd'] && $externalData['date'] <= $internalData['ed'])) {
             return false;
         }
         
@@ -82,10 +82,10 @@ final class ByDate extends Restriction {
     public function outRange(array $internalData, array $externalData) : bool {
         # Procesar datos
         // internos
-        if ($this ->validateDataIntegrity($internalData, ['start' => ['string'], 'end' => ['string']])) {
-            $internalData['start'] = $this ->formatDate($internalData['start']);
-            $internalData['end'] = $this ->formatDate($internalData['end']);
-            if (!$internalData['start'] || !$internalData['end']) {
+        if ($this ->validateDataIntegrity($internalData, ['sd' => ['string'], 'ed' => ['string']])) {
+            $internalData['sd'] = $this ->formatDate($internalData['sd']);
+            $internalData['ed'] = $this ->formatDate($internalData['ed']);
+            if (!$internalData['sd'] || !$internalData['ed']) {
                 return false;
             }
         }
@@ -98,7 +98,7 @@ final class ByDate extends Restriction {
         }
 
         # Validar
-        if ($externalData['date'] >= $internalData['start'] && $externalData['date'] <= $internalData['end']) {
+        if ($externalData['date'] >= $internalData['sd'] && $externalData['date'] <= $internalData['ed']) {
             return false;
         }
 
@@ -113,9 +113,9 @@ final class ByDate extends Restriction {
     public function after(array $internalData, array $externalData) : bool {
         # Procesar datos
         // internos
-        if ($this ->validateDataIntegrity($internalData, ['date' => ['string']])) {
-            $internalData['date'] = $this ->formatDate($internalData['date']);
-            if (!$internalData['date']) {
+        if ($this ->validateDataIntegrity($internalData, ['d' => ['string']])) {
+            $internalData['d'] = $this ->formatDate($internalData['d']);
+            if (!$internalData['d']) {
                 return false;
             }
         }
@@ -128,7 +128,7 @@ final class ByDate extends Restriction {
         }
 
         # Validar         
-        if ($externalData['date'] <= $internalData['date']) {
+        if ($externalData['date'] <= $internalData['d']) {
             return false;
         }
 
@@ -145,9 +145,12 @@ final class ByDate extends Restriction {
      * @return string|int
      */
      function formatDate(string $date, bool $toTime = true) : string|int {
-        $date = str_replace('%Y', date('Y'), $date);
-        $date = str_replace('%M', date('m'), $date);
-        $date = str_replace('%D', date('d'), $date);
+        $currentDate = date('Y-m-d');
+        $currentDate = explode('-', $currentDate);
+        
+        $date = str_replace('%Y', $currentDate['0'], $date);
+        $date = str_replace('%M', $currentDate['1'], $date);
+        $date = str_replace('%D', $currentDate['2'], $date);
 
         return $toTime ? strtotime($date) : $date;
     }
