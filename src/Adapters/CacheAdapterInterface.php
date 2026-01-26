@@ -47,5 +47,5 @@ interface CacheAdapterInterface {
    * 
    * @return bool TRUE en caso de éxito, FALSE en caso de fallo.
    */
-  public function clear() : bool;
+  public function clean() : bool;
 }

@@ -113,7 +113,7 @@ class CacheAdapter implements CacheAdapterInterface {
         return $deletedCount;
     }
 
-    public function clear() : bool {
+    public function clean() : bool {
         if (empty($this ->cacheDir)) {
             return false;
         }
