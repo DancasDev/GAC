@@ -288,7 +288,7 @@ class GAC {
             foreach ($list as $entityKey => $subList) {
                 foreach ($subList as $entityId) {
                     $entityId = (string) $entityId;
-                    $this ->cacheAdapter ->delete($this ->cachekey . '_' . $type . '_' . $entityKey . '_' . $sub);
+                    $this ->cacheAdapter ->delete($this ->cachekey . '_' . $type . '_' . $entityKey . '_' . $entityId);
                 }
             }
         }
