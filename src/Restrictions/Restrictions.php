@@ -16,6 +16,15 @@ class Restrictions {
         $this->list = $list;
     }
 
+    public function getList() : array {
+        return $this ->list;
+    }
+
+    public function setList(array $list) : Restrictions {
+        $this ->list = $list;
+        return $this;
+    }
+
     /**
      * Verificar si se imponen restricciones de un tipo
      * 
