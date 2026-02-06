@@ -10,6 +10,15 @@ class Permissions {
     public function __construct(array $list) {
         $this->list = $list;
     }
+    
+    public function getList() : array {
+        return $this ->list;
+    }
+
+    public function setList(array $list) : Permissions {
+        $this ->list = $list;
+        return $this;
+    }
 
     /**
      * Verificar si se tiene permiso para acceder a un módulo
