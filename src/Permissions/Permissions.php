@@ -30,7 +30,7 @@ class Permissions {
     public function has(string $moduleCode) : bool {
         return array_key_exists($moduleCode, $this ->list);
     }
-
+    
     /**
      * Obtener permiso de la entidad
      * 
@@ -39,6 +39,22 @@ class Permissions {
      * @return Permission|null Instancia de Permission con los datos del permiso, NULL si no tiene permiso
      */
     public function get(string $moduleCode) : Permission|null {
+        $result = $this ->getArray($moduleCode);
+        if (is_null($result)) {
+            return null;
+        }
+
+        return new Permission($result);  
+    }
+
+    /**
+     * Obtener datos de la entidad
+     * 
+     * @param string $moduleCode - Código del módulo
+     * 
+     * @return Array|null
+     */
+    public function getArray(string $moduleCode) : Array|null {
         if (!$this ->has($moduleCode)) {
             return null;
         }
@@ -46,6 +62,6 @@ class Permissions {
             throw new \Exception('The permission data for module "'. $moduleCode . '" is invalid.', 1);
         }
 
-        return new Permission(array_merge($this ->list[$moduleCode], ['module_code' => $moduleCode]));   
+        return array_merge($this ->list[$moduleCode], ['module_code' => $moduleCode]);
     }
 }
