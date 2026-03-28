@@ -2,7 +2,7 @@
 
 namespace DancasDev\GAC\Permissions;
 
-final class Permission {
+class Permission {
     protected $id;
     protected $feature;
     protected $level;
