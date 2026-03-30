@@ -50,7 +50,8 @@ class Restriction {
                 if (!$result) {
                     $this ->error = [
                         'method' => $method,
-                        'restriction' => $restriction,
+                        'restriction_id' => $restriction['i'],
+                        'data' => $restriction['d']
                     ];
 
                     return false;

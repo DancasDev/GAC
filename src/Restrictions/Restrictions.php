@@ -75,4 +75,45 @@ class Restrictions {
         }
         self::$restrictionMap[$alias] = $className;
     }
+
+    /**
+     * Ejecutar restricciones
+     * 
+     * @param array $externalData - Datos externos
+     * 
+     * @return bool|array 
+     */
+    public function run(array $externalData) : bool|array {
+        $list = array_keys($this ->getList());
+        foreach ($list as $code) {
+            // Restricción presente?
+            $restriction = $this->get($code);
+            if (!$restriction) {
+                continue;
+            }
+            // Datos externos presentes?
+            if (!array_key_exists($code, $externalData) || !is_array($externalData[$code])) {
+                continue;
+            }
+
+            // Ejecutar
+            $result = $restriction->run($externalData[$code]);
+            if (!$result) {
+                $error = $restriction->getError();
+                $error['restriction'] = $code;
+                if ($code == 'by_date') {
+                    if ($error['method'] == 'before' || $error['method'] == 'after') {
+                        $error['data']['d'] = $restriction->formatDate($error['data']['d'] ?? '', false);
+                    } elseif ($error['method'] == 'in_range' || $error['method'] == 'out_range') {
+                        $error['data']['sd'] = $restriction->formatDate($error['data']['sd'] ?? '', false);
+                        $error['data']['ed'] = $restriction->formatDate($error['data']['ed'] ?? '', false);
+                    }
+                }
+
+                return $error;
+            }
+        }
+
+        return false;
+    }
 }
