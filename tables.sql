@@ -68,22 +68,23 @@ CREATE TABLE IF NOT EXISTS `gac_module_access` (
   `from_entity_id` int NOT NULL,
   `to_entity_type` enum('0','1') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'A la entidad: 0 = Categoría (acc_module_category), 1 = Módulo (acc_module)',
   `to_entity_id` int NOT NULL,
-  `feature` set('0','1','2','3','4','5') COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Con acceso a las caracteristicas (acciones): 0 = Crear, 1 = Leer, 2 = Actualizar, 3 = Eliminar, 4 = Papelera (valor funciona en combinación con los valores 1, 2 y 3), 5 = Modo desarrollo',
+  `scope_path` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '*' COMMENT 'Ruta jerárquica de alcance: * (global), empresaX, empresaX/SucursalA, etc.',
+  `feature` smallint(5) NOT NULL DEFAULT 0 COMMENT 'Bitmask de accesos: 1=Crear, 2=Leer, 4=Actualizar, 8=Eliminar, 16=Papelera, 32=Modo desarrollo',
   `level` enum('0','1','2') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '1' COMMENT 'Con un nivel de acceso: 0 = Bajo, 1 = Normal, 2 = Alto',
   `is_disabled` enum('0','1') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '0',
   `created_at` bigint NOT NULL,
   `updated_at` bigint DEFAULT NULL,
   `deleted_at` bigint DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `access_unique` (`from_entity_type`,`from_entity_id`,`to_entity_type`,`to_entity_id`),
+  UNIQUE KEY `access_unique` (`from_entity_type`,`from_entity_id`,`to_entity_type`,`to_entity_id`,`scope_path`),
   KEY `from_entity_type` (`from_entity_type`),
   KEY `to_entity_type` (`to_entity_type`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `gac_module_access` (`id`, `from_entity_type`, `from_entity_id`, `to_entity_type`, `to_entity_id`, `feature`, `level`, `is_disabled`, `created_at`, `updated_at`, `deleted_at`) VALUES
-(1, '0', 1, '0', 1, '0,1,2,3,4,5', '1', '0', 1726150616, NULL, NULL),
-(2, '0', 1, '0', 2, '0,1,2,3,4,5', '1', '0', 1726150616, NULL, NULL),
-(3, '0', 1, '0', 3, '0,1,2,3,4,5', '1', '0', 1726150616, NULL, NULL);
+(1, '0', 1, '0', 1, 63, '1', '0', 1726150616, NULL, NULL),
+(2, '0', 1, '0', 2, 63, '1', '0', 1726150616, NULL, NULL),
+(3, '0', 1, '0', 3, 63, '1', '0', 1726150616, NULL, NULL);
 
 DROP TABLE IF EXISTS `gac_module_category`;
 CREATE TABLE IF NOT EXISTS `gac_module_category` (
