@@ -342,12 +342,12 @@ class GAC {
         $roleData = $this->getEntityRoleData();
 
         $query = 'SELECT id, from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level';
-        $query .= ' FROM `gac_module_permission` WHERE ((`from_entity_type` = ? AND `from_entity_id` = ?)';
+        $query .= ' FROM gac_module_permission WHERE ((from_entity_type = ? AND from_entity_id = ?)';
         foreach ($roleData['list'] as $key => $id) {
-            $query .= ' OR (`from_entity_type` = \'0\' AND `from_entity_id` = ?)';
+            $query .= ' OR (from_entity_type = \'0\' AND from_entity_id = ?)';
         }
-        $query .= ') AND `deleted_at` IS NULL AND `is_disabled` = \'0\'';
-        $query .= ' ORDER BY `from_entity_type` DESC';
+        $query .= ') AND deleted_at IS NULL AND is_disabled = \'0\'';
+        $query .= ' ORDER BY from_entity_type DESC';
         $stmt = $this->pdo->prepare($query);
         $stmt->execute(array_merge([$this->entityType, $this->entityId], $roleData['list']));
         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -472,15 +472,15 @@ class GAC {
     protected function getEntityRestrictionsFromDB(): array {
         $roleData = $this->getEntityRoleData();
 
-        $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, `config`';
-        $query .= ' FROM `gac_restriction`';
-        $query .= ' WHERE `deleted_at` IS NULL AND `is_disabled` = \'0\'';
-        $query .= ' AND ((`entity_type` = ? AND `entity_id` = ?)';
+        $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, config';
+        $query .= ' FROM gac_restriction';
+        $query .= ' WHERE deleted_at IS NULL AND is_disabled = \'0\'';
+        $query .= ' AND ((entity_type = ? AND entity_id = ?)';
         foreach ($roleData['list'] as $id) {
-            $query .= ' OR (`entity_type` = \'0\' AND `entity_id` = ?)';
+            $query .= ' OR (entity_type = \'0\' AND entity_id = ?)';
         }
         $query .= ')';
-        $query .= ' ORDER BY `entity_type` DESC';
+        $query .= ' ORDER BY entity_type DESC';
 
         $params = array_merge([$this->entityType, $this->entityId], $roleData['list']);
         $stmt = $this->pdo->prepare($query);
@@ -540,10 +540,10 @@ class GAC {
     }
 
     protected function getGlobalRestrictionsFromDB(): array {
-        $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, `config`';
-        $query .= ' FROM `gac_restriction`';
-        $query .= ' WHERE `deleted_at` IS NULL AND `is_disabled` = \'0\'';
-        $query .= ' AND `entity_type` = \'3\'';
+        $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, config';
+        $query .= ' FROM gac_restriction';
+        $query .= ' WHERE deleted_at IS NULL AND is_disabled = \'0\'';
+        $query .= ' AND entity_type = \'3\'';
 
         $stmt = $this->pdo->prepare($query);
         $stmt->execute();
@@ -573,7 +573,7 @@ class GAC {
 
         $roleIds = array_map('intval', $roleIds);
         $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
-        $query = 'SELECT id, role_id, entity_type, entity_id FROM `gac_role_entity` WHERE role_id IN (' . $placeholders . ') AND is_disabled = \'0\' AND deleted_at IS NULL';
+        $query = 'SELECT id, role_id, entity_type, entity_id FROM gac_role_entity WHERE role_id IN (' . $placeholders . ') AND is_disabled = \'0\' AND deleted_at IS NULL';
         $stmt = $this->pdo->prepare($query);
         $stmt->execute($roleIds);
 
@@ -584,7 +584,7 @@ class GAC {
         if ($reset || empty($this->entityRoleData)) {
             $data = ['list' => [], 'priority' => []];
             $query = 'SELECT b.id, b.code, a.priority';
-            $query .= ' FROM `gac_role_entity` AS a INNER JOIN `gac_role` AS b ON a.role_id = b.id';
+            $query .= ' FROM gac_role_entity AS a INNER JOIN gac_role AS b ON a.role_id = b.id';
             $query .= ' WHERE a.entity_type = :entity_type AND a.entity_id = :entity_id AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
             $query .= ' ORDER BY a.priority ASC';
             $stmt = $this->pdo->prepare($query);
