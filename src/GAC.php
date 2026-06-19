@@ -4,17 +4,25 @@ namespace DancasDev\GAC;
 
 use DancasDev\GAC\Permissions\Permissions;
 use DancasDev\GAC\Restrictions\Restrictions;
-use DancasDev\GAC\Adapters\DatabaseAdapter;
-use DancasDev\GAC\Adapters\CacheAdapter;
-use DancasDev\GAC\Exceptions\DatabaseAdapterException;
-use DancasDev\GAC\Exceptions\CacheAdapterException;
+
+use DancasDev\GAC\Drivers\CacheAdapter;
+
+
 use PDO;
 
 class GAC {
     public $databaseAdapter;
     public $cacheAdapter;
 
-    protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
+        protected PDO $pdo;
+    protected string $scopePath = '*';
+
+    public function __construct(PDO $pdo) {
+        $this->pdo = $pdo;
+        $this->cachekey = 'gac';
+        $this->cacheTtl = 1800;
+    }
+protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
     protected array $entityRoleData = []; // ['list' => [], 'priority' => []]
     protected $entityType;
     protected $entityId;
@@ -59,7 +67,7 @@ class GAC {
     public function getEntityRoleData(bool $reset = false) {
         if ($reset || empty($this ->entityRoleData)) {
             $data = ['list' => [], 'priority' => []];
-            $result = $this ->databaseAdapter ->getRoles($this ->entityType, $this ->entityId);
+            $result = $this->pdo->getRoles($this ->entityType, $this ->entityId);
             foreach ($result as $key => $role) {
                 $data['priority'][$role['id']] = (int) $role['priority'];
                 $data['list'][] = $role['id'];
@@ -80,23 +88,7 @@ class GAC {
      * 
      * @return GAC
      */
-    public function setDatabase($params) : GAC {
-        if (is_array($params) || $params instanceof PDO) {
-            $this ->databaseAdapter = new DatabaseAdapter($params);
-        }
-        elseif (is_object($params)) {
-            if (!in_array('DancasDev\\GAC\\Adapters\\DatabaseAdapterInterface', class_implements($params))) {
-                throw new DatabaseAdapterException('Invalid implementation: The database adapter must implement DatabaseAdapterInterface.', 1);
-            }
-
-            $this ->databaseAdapter = $params;
-        }
-        else {
-            throw new DatabaseAdapterException('Need to provide database adapter.', 1);
-        }
-
-        return $this;
-    }
+    
     
     /**
      * Establecer cache
@@ -277,7 +269,7 @@ class GAC {
                 $list['2'] = $entityIds;
             }
             elseif($entityType == 'role') {
-                $result = $this ->databaseAdapter ->getEntitiesByRoles($entityIds);
+                $result = $this->pdo->getEntitiesByRoles($entityIds);
                 foreach ($result as $record) {
                     $list[$record['entity_type']] ??= [];
                     $list[$record['entity_type']][$record['entity_id']] = $record['entity_id'];
@@ -357,7 +349,7 @@ class GAC {
         // Roles
         $roleData = $this ->getEntityRoleData();
         // permisos relacionados a la entidad y los roles asignados al mismo
-        $result = $this ->databaseAdapter ->getPermissions($this ->entityType, $this ->entityId, $roleData['list']);
+        $result = $this->pdo->getPermissions($this ->entityType, $this ->entityId, $roleData['list']);
         if (!is_array($result) || empty($result)) {
             return $response;
         }
@@ -391,7 +383,7 @@ class GAC {
 
         // Datos de los modulos
         $modulesBy = ['category' => [], 'module' => []];
-        $result = $this ->databaseAdapter ->getModulesData($categoryIds, $moduleIds);
+        $result = $this->pdo->getModulesData($categoryIds, $moduleIds);
         foreach ($result as $record) {
             $modulesBy['category'][$record['module_category_id']][$record['id']] = $record['id']; // solo referencial
             $modulesBy['module'][$record['id']] = $record; // modulo con todos los datos
@@ -463,7 +455,7 @@ class GAC {
             $roleIds = $result['list'];
         }
 
-        $result = $this ->databaseAdapter ->getRestrictions($entityType, $entityId, $roleIds);
+        $result = $this->pdo->getRestrictions($entityType, $entityId, $roleIds);
         if (!is_array($result) || empty($result)) {
             return $response;
         }

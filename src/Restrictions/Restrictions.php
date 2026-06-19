@@ -3,7 +3,6 @@
 namespace DancasDev\GAC\Restrictions;
 
 use DancasDev\GAC\Restrictions\ByDate;
-use DancasDev\GAC\Restrictions\ByEntity;
 
 class Restrictions {
     protected array $list = [];
@@ -117,3 +116,4 @@ class Restrictions {
         return false;
     }
 }
+

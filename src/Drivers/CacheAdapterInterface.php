@@ -1,6 +1,6 @@
 <?php
 
-namespace DancasDev\GAC\Adapters;
+namespace DancasDev\GAC\Drivers;
 
 interface CacheAdapterInterface {
   
