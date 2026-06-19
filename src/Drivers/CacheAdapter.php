@@ -2,8 +2,7 @@
 
 namespace DancasDev\GAC\Drivers;
 
-use DancasDev\GAC\Adapters\CacheAdapterInterface;
-use DancasDev\GAC\Exceptions\CacheAdapterException;
+use DancasDev\GAC\Drivers\CacheAdapterInterface;
 
 class CacheAdapter implements CacheAdapterInterface {
     private $cacheDir;
@@ -33,7 +32,7 @@ class CacheAdapter implements CacheAdapterInterface {
         }
 
         if (!$response) {
-            throw new CacheAdapterException('Error setting cache directory');
+            throw new \Exception('Error setting cache directory');
         }
 
         return $response;

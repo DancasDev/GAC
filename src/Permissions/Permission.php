@@ -27,8 +27,8 @@ class Permission {
         return $this->module_code;
     }
 
-    public function getFeature() : array {
-        return $this->feature;
+    public function getFeature() : int {
+        return (int) $this->feature;
     }
 
     public function getLevel() : int {
@@ -52,19 +52,15 @@ class Permission {
      * @return bool TRUE si tiene acceso, FALSE si no tiene acceso
      */
     public function hasFeature(string|array $feature) : bool {
-        // Validar integridad
-        if (empty($this ->feature) || !is_array($this ->feature)) {
-            return false;
-        }
-        elseif (empty($feature)) {
+        if (empty($feature)) {
             return false;
         }
 
-        // Validar permiso
+        $bits = (int) $this->feature;
         $feature = is_array($feature) ? $feature : [$feature];
         foreach ($feature as $value) {
-            $value = $this ->featureKeys[$value] ?? $value;
-            if (!in_array($value, $this->feature)) {
+            $bit = (int) ($this->featureKeys[$value] ?? $value);
+            if (!($bits & (1 << $bit))) {
                 return false;
             }
         }
