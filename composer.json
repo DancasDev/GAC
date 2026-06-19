@@ -1,24 +1,24 @@
 {
-    "name": "dancasdev/gac",
-    "description": "GAC (Granular Access Control) es una librería PHP que proporciona un sistema flexible y eficiente para gestionar los permisos de acceso en desarrollos backend (APIs, MVC, Etc).",
-    "homepage": "https://github.com/DancasDev/GAC",
-    "keywords": [
-        "php",
-        "gac"
-    ],
-    "authors": [
-        {
-            "name": "Daniel Castillo",
-            "email": "danielcastillo.developer@gmail.com",
-            "role": "Developer"
-        }
-    ],
-    "type": "library",
-    "license": "MIT",
-    "autoload": {
-        "psr-4": {
-            "DancasDev\\GAC\\": "src"
-        }
-    },
-    "minimum-stability": "stable"
+  "name": "dancasdev/gac",
+  "description": "GAC (Granular Access Control) es una Librería PHP para gestionar permisos y restricciones de acceso con granularidad por módulo, rol, usuario y alcance jerárquico. Compatible con MySQL y PostgreSQL.",
+  "homepage": "https://github.com/DancasDev/GAC",
+  "keywords": [
+    "php",
+    "gac"
+  ],
+  "authors": [
+    {
+      "name": "Daniel Castillo",
+      "email": "danielcastillo.developer@gmail.com",
+      "role": "Developer"
+    }
+  ],
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "DancasDev\\GAC\\": "src"
+    }
+  },
+  "minimum-stability": "stable"
 }
