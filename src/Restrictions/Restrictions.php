@@ -4,6 +4,7 @@ namespace DancasDev\GAC\Restrictions;
 
 use DancasDev\GAC\Restrictions\RestrictionHandlerInterface;
 use DancasDev\GAC\Restrictions\Handlers\ByDate;
+use DancasDev\GAC\Restrictions\Handlers\ByIp;
 
 class Restrictions {
     protected array $data = [];
@@ -11,6 +12,7 @@ class Restrictions {
 
     protected static array $handlerMap = [
         'date' => ByDate::class,
+        'ip'   => ByIp::class,
     ];
 
     public function __construct(array $data) {
