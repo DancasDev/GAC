@@ -7,7 +7,7 @@ por módulo, rol, usuario y alcance jerárquico. Compatible con MySQL y PostgreS
 
 - PHP 8.0 o superior
 - MySQL 5.7+ o PostgreSQL 12+
-- Extensión PDO
+- Extensión PDO (o `ext-mysqli` / `ext-pgsql` con los adapters nativos)
 
 ## Instalación
 
@@ -110,6 +110,8 @@ Eso es todo. Las guías completas están en:
 
 - **[docs/permissions.md](docs/permissions.md)** — Todo sobre permisos
 - **[docs/restrictions.md](docs/restrictions.md)** — Todo sobre restricciones
+- **[docs/database.md](docs/database.md)** — Drivers de base de datos (PDO, MySQLi, PostgreSQL)
+- **[docs/cache.md](docs/cache.md)** — Sistema de caché (archivos, Redis, personalizado)
 
 ## Pruebas
 
@@ -117,7 +119,7 @@ Eso es todo. Las guías completas están en:
 php test/TestRunner.php
 ```
 
-El script pide los datos de conexión a la base de datos y ejecuta 51 pruebas automáticas.
+El script pide los datos de conexión a la base de datos y ejecuta 59 pruebas automáticas.
 
 ## Licencia
 
