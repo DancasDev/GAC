@@ -4,13 +4,15 @@ namespace DancasDev\GAC;
 
 use DancasDev\GAC\Permissions\Permissions;
 use DancasDev\GAC\Restrictions\Restrictions;
-use DancasDev\GAC\Drivers\CacheAdapterInterface;
+use DancasDev\GAC\Drivers\Cache\CacheInterface;
+use DancasDev\GAC\Drivers\Database\ConnectionInterface;
+use DancasDev\GAC\Drivers\Database\StatementInterface;
 use PDO;
 
 class GAC {
-    public ?CacheAdapterInterface $cacheAdapter = null;
+    public ?CacheInterface $cacheAdapter = null;
 
-    protected PDO $pdo;
+    protected ConnectionInterface $connection;
     protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
     protected array $entityRoleData = [];
     protected $entityType;
@@ -25,16 +27,19 @@ class GAC {
     protected array $globalRestrictions = [];
     protected bool $globalLoaded = false;
 
-    public function __construct(PDO $pdo, CacheAdapterInterface|array|null $cache = null) {
-        $this->pdo = $pdo;
+    public function __construct(ConnectionInterface|PDO $connection, CacheInterface|array|null $cache = null) {
+        if ($connection instanceof PDO) {
+            $connection = new \DancasDev\GAC\Drivers\Database\PdoConnection($connection);
+        }
+        $this->connection = $connection;
         $this->cachekey = 'gac';
         $this->cacheTtl = 1800;
 
-        if ($cache instanceof CacheAdapterInterface) {
+        if ($cache instanceof CacheInterface) {
             $this->cacheAdapter = $cache;
         } elseif (is_array($cache)) {
             $dir = $cache['dir'] ?? __DIR__ . '/writable';
-            $this->cacheAdapter = new \DancasDev\GAC\Drivers\CacheAdapter($dir);
+            $this->cacheAdapter = new \DancasDev\GAC\Drivers\Cache\FileCache($dir);
             $this->cachekey = $cache['prefix'] ?? 'gac';
             $this->cacheTtl = (int) ($cache['ttl'] ?? 1800);
         }
@@ -340,17 +345,18 @@ class GAC {
         }
 
         $roleData = $this->getEntityRoleData();
+        $c = $this->connection;
 
         $query = 'SELECT id, from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level';
-        $query .= ' FROM gac_module_permission WHERE ((from_entity_type = ? AND from_entity_id = ?)';
-        foreach ($roleData['list'] as $key => $id) {
-            $query .= ' OR (from_entity_type = \'0\' AND from_entity_id = ?)';
+        $query .= ' FROM gac_module_permission WHERE ((from_entity_type = ' . $c->param() . ' AND from_entity_id = ' . $c->param() . ')';
+        foreach ($roleData['list'] as $id) {
+            $query .= ' OR (from_entity_type = \'0\' AND from_entity_id = ' . $c->param() . ')';
         }
         $query .= ') AND deleted_at IS NULL AND is_disabled = \'0\'';
         $query .= ' ORDER BY from_entity_type DESC';
-        $stmt = $this->pdo->prepare($query);
+        $stmt = $c->prepare($query);
         $stmt->execute(array_merge([$this->entityType, $this->entityId], $roleData['list']));
-        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
         if (!is_array($result) || empty($result)) {
             return $response;
@@ -390,9 +396,9 @@ class GAC {
             }
             $query .= ') AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
 
-            $stmt = $this->pdo->prepare($query);
+            $stmt = $this->connection->prepare($query);
             $stmt->execute();
-            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
             foreach ($result as $record) {
                 $modulesBy['category'][$record['module_category_id']][$record['id']] = $record['id'];
@@ -471,21 +477,22 @@ class GAC {
      */
     protected function getEntityRestrictionsFromDB(): array {
         $roleData = $this->getEntityRoleData();
+        $c = $this->connection;
 
         $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, config';
         $query .= ' FROM gac_restriction';
         $query .= ' WHERE deleted_at IS NULL AND is_disabled = \'0\'';
-        $query .= ' AND ((entity_type = ? AND entity_id = ?)';
+        $query .= ' AND ((entity_type = ' . $c->param() . ' AND entity_id = ' . $c->param() . ')';
         foreach ($roleData['list'] as $id) {
-            $query .= ' OR (entity_type = \'0\' AND entity_id = ?)';
+            $query .= ' OR (entity_type = \'0\' AND entity_id = ' . $c->param() . ')';
         }
         $query .= ')';
         $query .= ' ORDER BY entity_type DESC';
 
         $params = array_merge([$this->entityType, $this->entityId], $roleData['list']);
-        $stmt = $this->pdo->prepare($query);
+        $stmt = $c->prepare($query);
         $stmt->execute($params);
-        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
         if (!is_array($result) || empty($result)) {
             return [];
@@ -545,9 +552,9 @@ class GAC {
         $query .= ' WHERE deleted_at IS NULL AND is_disabled = \'0\'';
         $query .= ' AND entity_type = \'3\'';
 
-        $stmt = $this->pdo->prepare($query);
+        $stmt = $this->connection->prepare($query);
         $stmt->execute();
-        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
         if (!is_array($result) || empty($result)) {
             return [];
@@ -571,27 +578,31 @@ class GAC {
             return [];
         }
 
+        $c = $this->connection;
         $roleIds = array_map('intval', $roleIds);
-        $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
+        $parts = [];
+        foreach ($roleIds as $id) {
+            $parts[] = $c->param();
+        }
+        $placeholders = implode(',', $parts);
         $query = 'SELECT id, role_id, entity_type, entity_id FROM gac_role_entity WHERE role_id IN (' . $placeholders . ') AND is_disabled = \'0\' AND deleted_at IS NULL';
-        $stmt = $this->pdo->prepare($query);
+        $stmt = $c->prepare($query);
         $stmt->execute($roleIds);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
     }
 
     protected function getEntityRoleData(bool $reset = false) {
         if ($reset || empty($this->entityRoleData)) {
             $data = ['list' => [], 'priority' => []];
+            $c = $this->connection;
             $query = 'SELECT b.id, b.code, a.priority';
             $query .= ' FROM gac_role_entity AS a INNER JOIN gac_role AS b ON a.role_id = b.id';
-            $query .= ' WHERE a.entity_type = :entity_type AND a.entity_id = :entity_id AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
+            $query .= ' WHERE a.entity_type = ' . $c->param() . ' AND a.entity_id = ' . $c->param() . ' AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
             $query .= ' ORDER BY a.priority ASC';
-            $stmt = $this->pdo->prepare($query);
-            $stmt->bindParam(':entity_type', $this->entityType, PDO::PARAM_STR);
-            $stmt->bindParam(':entity_id', $this->entityId, PDO::PARAM_INT);
-            $stmt->execute();
-            $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt = $c->prepare($query);
+            $stmt->execute([$this->entityType, $this->entityId]);
+            $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
             foreach ($result as $role) {
                 $data['priority'][$role['id']] = (int) $role['priority'];

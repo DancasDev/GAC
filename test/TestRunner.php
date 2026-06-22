@@ -35,6 +35,7 @@ $testFiles = [
     'result',
     'restrictions',
     'cache',
+    'adapters',
 ];
 
 foreach ($testFiles as $file) {

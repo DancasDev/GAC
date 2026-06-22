@@ -2,24 +2,37 @@
 
 namespace DancasDev\GAC;
 
+use DancasDev\GAC\Drivers\Database\ConnectionInterface;
+use DancasDev\GAC\Drivers\Database\PdoConnection;
+use DancasDev\GAC\Drivers\Database\PgsqlConnection;
 use PDO;
 
 class Schema {
     private static array $options = [];
 
-    public static function install(PDO $pdo, array $options = []): bool {
+    private static function detectDriver(ConnectionInterface|PDO &$connection): string {
+        if ($connection instanceof PDO) {
+            $driver = $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
+            $connection = new PdoConnection($connection);
+        } elseif ($connection instanceof PgsqlConnection) {
+            $driver = 'pgsql';
+        } else {
+            $driver = 'mysql';
+        }
+        if ($driver === 'mariadb') $driver = 'mysql';
+        if (!in_array($driver, ['mysql', 'pgsql'], true)) {
+            throw new \RuntimeException("Unsupported driver: $driver");
+        }
+        return $driver;
+    }
+
+    public static function install(ConnectionInterface|PDO $connection, array $options = []): bool {
+        $driver = self::detectDriver($connection);
         self::$options = array_merge([
             'charset'       => 'utf8mb4',
             'collation'     => 'utf8mb4_unicode_ci',
             'show_comments' => true,
         ], $options);
-
-        $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $driver = match ($driver) {
-            'mysql', 'mariadb' => 'mysql',
-            'pgsql'           => 'pgsql',
-            default           => throw new \RuntimeException("Unsupported driver: $driver")
-        };
 
         $method = 'ddl' . ucfirst($driver);
         $statements = [];
@@ -29,40 +42,35 @@ class Schema {
             $statements = array_merge($statements, self::$method($name, $def));
         }
 
-        $pdo->exec('START TRANSACTION');
+        $connection->exec('START TRANSACTION');
         try {
             foreach ($statements as $sql) {
-                $pdo->exec($sql);
+                $connection->exec($sql);
             }
-            $pdo->exec('COMMIT');
+            $connection->exec('COMMIT');
             return true;
         } catch (\Throwable $e) {
-            $pdo->exec('ROLLBACK');
+            $connection->exec('ROLLBACK');
             throw $e;
         }
     }
 
-    public static function uninstall(PDO $pdo): bool {
-        $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $driver = match ($driver) {
-            'mysql', 'mariadb' => 'mysql',
-            'pgsql'           => 'pgsql',
-            default           => throw new \RuntimeException("Unsupported driver: $driver")
-        };
+    public static function uninstall(ConnectionInterface|PDO $connection): bool {
+        $driver = self::detectDriver($connection);
 
         $quote = fn(string $t) => $driver === 'pgsql' ? '"' . $t . '"' : '`' . $t . '`';
         $tables = array_keys(self::tables());
 
         if ($driver === 'mysql') {
-            $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+            $connection->exec('SET FOREIGN_KEY_CHECKS = 0');
         }
 
         foreach (array_reverse($tables) as $table) {
-            $pdo->exec('DROP TABLE IF EXISTS ' . $quote($table) . ($driver === 'pgsql' ? ' CASCADE' : ''));
+            $connection->exec('DROP TABLE IF EXISTS ' . $quote($table) . ($driver === 'pgsql' ? ' CASCADE' : ''));
         }
 
         if ($driver === 'mysql') {
-            $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+            $connection->exec('SET FOREIGN_KEY_CHECKS = 1');
         }
 
         return true;
