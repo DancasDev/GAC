@@ -42,6 +42,32 @@ class Schema {
         }
     }
 
+    public static function uninstall(PDO $pdo): bool {
+        $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $driver = match ($driver) {
+            'mysql', 'mariadb' => 'mysql',
+            'pgsql'           => 'pgsql',
+            default           => throw new \RuntimeException("Unsupported driver: $driver")
+        };
+
+        $quote = fn(string $t) => $driver === 'pgsql' ? '"' . $t . '"' : '`' . $t . '`';
+        $tables = array_keys(self::tables());
+
+        if ($driver === 'mysql') {
+            $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+        }
+
+        foreach (array_reverse($tables) as $table) {
+            $pdo->exec('DROP TABLE IF EXISTS ' . $quote($table) . ($driver === 'pgsql' ? ' CASCADE' : ''));
+        }
+
+        if ($driver === 'mysql') {
+            $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+        }
+
+        return true;
+    }
+
     private static function tables(): array {
         $en = fn(array $vals, string $d = '0') => ['type' => 'enum', 'vals' => $vals, 'notnull' => true, 'default' => $d];
         $b  = fn(string $type, int $len = null) => ['type' => $type, 'length' => $len];

@@ -28,7 +28,8 @@ Suponga que tiene un sistema con un módulo `users` y desea que:
 ```php
 use DancasDev\GAC\Schema;
 
-Schema::install($pdo); // Crea todas las tablas necesarias
+Schema::install($pdo);   // Crea todas las tablas necesarias
+// Schema::uninstall($pdo); // Elimina solo las tablas GAC
 ```
 
 ### Paso 2 — Registrar módulos y roles
