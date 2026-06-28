@@ -91,14 +91,13 @@ class Schema {
                 'unique' => ['username'],
             ],
             'gac_client' => [
-                'comment' => 'Directorio de tokens para aplicaciones externa',
+                'comment' => 'Registro de clientes (sistemas externos) como entidad de control de acceso',
                 'columns' => [
-                    'id'            => $b('serial'),
-                    'client_id'     => $b('varchar', 255) + ['notnull' => true, 'comment' => 'Identificador publico del cliente (similar a un username)'],
-                    'client_secret' => $b('varchar', 255) + ['notnull' => true, 'comment' => 'Secreto del cliente (DEBE almacenarse hasheado)'],
-                    'is_disabled'   => $en(['0', '1']) + ['comment' => '0=No, 1=Si'],
+                    'id'          => $b('serial'),
+                    'code'        => $b('varchar', 60) + ['notnull' => true, 'comment' => 'Codigo unico que identifica al cliente'],
+                    'is_disabled' => $en(['0', '1']) + ['comment' => '0=No, 1=Si'],
                 ],
-                'unique' => ['client_id'],
+                'unique' => ['code'],
             ],
             'gac_role' => [
                 'columns' => [
