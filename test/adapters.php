@@ -12,7 +12,7 @@ $currentDriver = TestCase::$driver;
 if ($currentDriver === 'mysql') :
 
 test('MysqliConnection param', function () {
-    $c = new mysqli('127.0.0.1', 'root', '', 'gac_test', 3306);
+    $c = new mysqli('127.0.0.1', 'root', '', TestCase::$dbname, 3306);
     if ($c->connect_error) throw new \Exception($c->connect_error);
     $a = new MysqliConnection($c);
     assert($a->param() === '?');
@@ -22,7 +22,7 @@ test('MysqliConnection param', function () {
 });
 
 test('MysqliConnection prepare + execute + fetchAll', function () {
-    $c = new mysqli('127.0.0.1', 'root', '', 'gac_test', 3306);
+    $c = new mysqli('127.0.0.1', 'root', '', TestCase::$dbname, 3306);
     if ($c->connect_error) throw new \Exception($c->connect_error);
     $a = new MysqliConnection($c);
     $s = $a->prepare('SELECT COUNT(*) as n FROM gac_role');
@@ -34,7 +34,7 @@ test('MysqliConnection prepare + execute + fetchAll', function () {
 });
 
 test('MysqliConnection prepare with params', function () {
-    $c = new mysqli('127.0.0.1', 'root', '', 'gac_test', 3306);
+    $c = new mysqli('127.0.0.1', 'root', '', TestCase::$dbname, 3306);
     if ($c->connect_error) throw new \Exception($c->connect_error);
     $a = new MysqliConnection($c);
     $s = $a->prepare('SELECT code FROM gac_role WHERE id = ' . $a->param());
@@ -46,7 +46,7 @@ test('MysqliConnection prepare with params', function () {
 });
 
 test('MysqliConnection exec', function () {
-    $c = new mysqli('127.0.0.1', 'root', '', 'gac_test', 3306);
+    $c = new mysqli('127.0.0.1', 'root', '', TestCase::$dbname, 3306);
     if ($c->connect_error) throw new \Exception($c->connect_error);
     $a = new MysqliConnection($c);
     $r = $a->exec('DO 1');
@@ -55,7 +55,7 @@ test('MysqliConnection exec', function () {
 });
 
 test('MysqliConnection temp table roundtrip', function () {
-    $c = new mysqli('127.0.0.1', 'root', '', 'gac_test', 3306);
+    $c = new mysqli('127.0.0.1', 'root', '', TestCase::$dbname, 3306);
     if ($c->connect_error) throw new \Exception($c->connect_error);
     $a = new MysqliConnection($c);
     $a->exec('CREATE TEMPORARY TABLE _gac_t (id INT, label VARCHAR(20))');
@@ -75,7 +75,7 @@ if ($currentDriver === 'pgsql') :
 
 test('PgsqlConnection param', function () {
     if (!function_exists('pg_connect')) throw new \Exception('ext-pgsql not loaded');
-    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=gac_test user=postgres');
+    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=' . TestCase::$dbname . ' user=postgres');
     if ($c === false) throw new \Exception('pg_connect failed');
     $a = new PgsqlConnection($c);
     assert($a->param() === '$1');
@@ -87,7 +87,7 @@ test('PgsqlConnection param', function () {
 
 test('PgsqlConnection prepare + execute + fetchAll', function () {
     if (!function_exists('pg_connect')) throw new \Exception('ext-pgsql not loaded');
-    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=gac_test user=postgres');
+    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=' . TestCase::$dbname . ' user=postgres');
     if ($c === false) throw new \Exception('pg_connect failed');
     $a = new PgsqlConnection($c);
     $s = $a->prepare('SELECT COUNT(*) as n FROM gac_role');
@@ -100,7 +100,7 @@ test('PgsqlConnection prepare + execute + fetchAll', function () {
 
 test('PgsqlConnection prepare with params', function () {
     if (!function_exists('pg_connect')) throw new \Exception('ext-pgsql not loaded');
-    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=gac_test user=postgres');
+    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=' . TestCase::$dbname . ' user=postgres');
     if ($c === false) throw new \Exception('pg_connect failed');
     $a = new PgsqlConnection($c);
     $s = $a->prepare('SELECT code FROM gac_role WHERE id = ' . $a->param());
@@ -113,7 +113,7 @@ test('PgsqlConnection prepare with params', function () {
 
 test('PgsqlConnection exec', function () {
     if (!function_exists('pg_connect')) throw new \Exception('ext-pgsql not loaded');
-    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=gac_test user=postgres');
+    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=' . TestCase::$dbname . ' user=postgres');
     if ($c === false) throw new \Exception('pg_connect failed');
     $a = new PgsqlConnection($c);
     $r = $a->exec('SELECT 1');
@@ -123,7 +123,7 @@ test('PgsqlConnection exec', function () {
 
 test('PgsqlConnection temp table roundtrip', function () {
     if (!function_exists('pg_connect')) throw new \Exception('ext-pgsql not loaded');
-    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=gac_test user=postgres');
+    $c = @pg_connect('host=127.0.0.1 port=5432 dbname=' . TestCase::$dbname . ' user=postgres');
     if ($c === false) throw new \Exception('pg_connect failed');
     $a = new PgsqlConnection($c);
     $a->exec('CREATE TEMPORARY TABLE _gac_t (id INT, label VARCHAR(20))');

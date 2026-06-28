@@ -48,10 +48,12 @@ use DancasDev\GAC\Schema;
 class TestCase {
     static PDO $pdo;
     static string $driver;
+    static string $dbname;
     private static bool $seeded = false;
 
     static function connect(string $driver, string $host, int $port, string $dbname, string $user, string $pass): void {
         self::$driver = $driver;
+        self::$dbname = $dbname;
 
         $dsn = "$driver:host=$host;port=$port";
         $tmp = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
