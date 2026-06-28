@@ -303,7 +303,7 @@ class GAC {
      *
      * FLUJO DE LA GRANULARIDAD:
      *
-     * 1. QUERY: Trae todos los registros de gac_module_permission para la entidad
+     * 1. QUERY: Trae todos los registros de gac_permission para la entidad
      *    (permisos directos del usuario/cliente + permisos heredados de roles).
      *    ORDER BY from_entity_type DESC  → primero personales (type=1/2), luego roles (type=0).
      *
@@ -332,7 +332,7 @@ class GAC {
      *
      * RESULTADO: array[module_code][] = {s, i, d, f, l}
      *   - s: scope_path del permiso
-     *   - i: id del permiso en gac_module_permission
+     *   - i: id del permiso en gac_permission
      *   - d: is_developing del módulo
      *   - f: feature (bitmask)
      *   - l: level
@@ -348,7 +348,7 @@ class GAC {
         $c = $this->connection;
 
         $query = 'SELECT id, from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level';
-        $query .= ' FROM gac_module_permission WHERE ((from_entity_type = ' . $c->param() . ' AND from_entity_id = ' . $c->param() . ')';
+        $query .= ' FROM gac_permission WHERE ((from_entity_type = ' . $c->param() . ' AND from_entity_id = ' . $c->param() . ')';
         foreach ($roleData['list'] as $id) {
             $query .= ' OR (from_entity_type = \'0\' AND from_entity_id = ' . $c->param() . ')';
         }

@@ -94,7 +94,7 @@ class TestCase {
     static function resetData(): void {
         self::exec("DELETE FROM gac_restriction");
         self::exec("DELETE FROM gac_role_entity");
-        self::exec("DELETE FROM gac_module_permission");
+        self::exec("DELETE FROM gac_permission");
         self::exec("DELETE FROM gac_role");
         self::exec("DELETE FROM gac_module");
         self::exec("DELETE FROM gac_module_category");
@@ -129,9 +129,9 @@ class TestCase {
             . "(4, 1, 'user_access', '0'), (5, 1, 'roles', '0'), "
             . "(6, 3, 'directory_people', '0'), (7, 1, 'clients', '0')");
         $ins('gac_role', 'id, code', "(1, 'admin'), (2, 'viewer')");
-        $ins('gac_module_permission', 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level',
+        $ins('gac_permission', 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level',
             "('0', 1, '0', 1, '*', 63, '1'), ('0', 1, '0', 2, '*', 63, '1'), ('0', 1, '0', 3, '*', 2, '1'), ('0', 2, '0', 1, '*', 2, '1')");
-        $ins('gac_module_permission', 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level',
+        $ins('gac_permission', 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level',
             "('1', 1, '1', 3, 'empresaX', 1, '1'), ('1', 1, '1', 3, 'empresaX/*', 7, '1')");
         $ins('gac_role_entity', 'role_id, entity_type, entity_id, priority',
             "(1, '1', 1, 0), (2, '1', 2, 0)");

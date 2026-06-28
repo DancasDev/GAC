@@ -57,7 +57,7 @@ Vincula usuarios o clientes a roles, con prioridad.
 
 > ⚠️ Un usuario solo puede tener **un rol por cada valor de `priority`**.
 
-### `gac_module_permission` — La tabla central
+### `gac_permission` — La tabla central
 
 **Aquí se define quién puede hacer qué, sobre qué módulo y en qué alcance.**
 
@@ -129,7 +129,7 @@ INSERT INTO gac_role_entity (role_id, entity_type, entity_id, priority) VALUES
 ```sql
 -- El rol admin tiene control total (63) sobre todos los módulos
 -- de la categoría "sistema" en cualquier sucursal
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('0', 1, '0', 1, '*', 63, '1');
 ```
@@ -140,7 +140,7 @@ VALUES ('0', 1, '0', 1, '*', 63, '1');
 
 ```sql
 -- El rol viewer solo puede leer (2) los módulos de "sistema"
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('0', 2, '0', 1, '*', 2, '1');
 ```
@@ -150,7 +150,7 @@ VALUES ('0', 2, '0', 1, '*', 2, '1');
 ```sql
 -- El usuario 30 (que por rol es viewer) puede editar users
 -- pero solo en la sucursal "Tigre"
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('1', 30, '1', 1, 'Tigre/*', 7, '1');
 ```
@@ -167,7 +167,7 @@ VALUES ('1', 30, '1', 1, 'Tigre/*', 7, '1');
 ## 4. Scope: cómo funciona el alcance
 
 Cuando verifica permisos con un scope específico (ej: `'empresaX/SucursalA'`),
-GAC resuelve cuál registro de `gac_module_permission` aplica usando estas reglas,
+GAC resuelve cuál registro de `gac_permission` aplica usando estas reglas,
 **en orden**:
 
 | Prioridad | Regla | Ejemplo con scope `'empresaX/SucursalA'` |
@@ -180,7 +180,7 @@ GAC resuelve cuál registro de `gac_module_permission` aplica usando estas regla
 
 Scope actual: `'empresaX/SucursalA/Deposito'`
 
-| Registros en `gac_module_permission` | ¿Cuál aplica? | ¿Por qué? |
+| Registros en `gac_permission` | ¿Cuál aplica? | ¿Por qué? |
 |--------------------------------------|---------------|-----------|
 | `*`, `empresaX/*` | `empresaX/*` | Wildcard cubre |
 | `*`, `empresaX/SucursalA/*`, `empresaX/*` | `empresaX/SucursalA/*` | Es el wildcard más profundo |
@@ -261,7 +261,7 @@ INSERT INTO gac_module (id, module_category_id, code) VALUES (1, 1, 'users');
 INSERT INTO gac_role (id, code) VALUES (1, 'admin');
 
 -- Paso 3: permiso (feature=63 = todo)
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('0', 1, '0', 1, '*', 63, '1');
 
@@ -276,7 +276,7 @@ VALUES (1, '1', 10, 0);
 -- El usuario 30 ya pertenece al rol "viewer" (solo lectura en *)
 -- Le damos permiso extra personal sobre users en "Tigre"
 
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('1', 30, '1', 1, 'Tigre/*', 7, '1');
 -- feature=7 = crear(1) + leer(2) + actualizar(4)
@@ -285,7 +285,7 @@ VALUES ('1', 30, '1', 1, 'Tigre/*', 7, '1');
 ### "Quiero que el permiso cubra a un cliente (no usuario)"
 
 ```sql
--- entity_type en gac_role_entity y gac_module_permission usa '2' para cliente
+-- entity_type en gac_role_entity y gac_permission usa '2' para cliente
 INSERT INTO gac_role_entity (role_id, entity_type, entity_id, priority)
 VALUES (1, '2', 5, 0);  -- cliente 5 es admin
 ```
@@ -321,7 +321,7 @@ $gac->purgePermissionsBy('role', [1]);
 
 | Error | Causa | Solución |
 |-------|-------|----------|
-| `$p->get('users')` devuelve `null` | El usuario/rol no tiene permiso para ese módulo | Verifique los INSERTs en `gac_module_permission` |
+| `$p->get('users')` devuelve `null` | El usuario/rol no tiene permiso para ese módulo | Verifique los INSERTs en `gac_permission` |
 | `hasFeature('read')` devuelve `false` cuando `feature=3` | `feature=3` = crear+leer. El bit de lectura (1) sí está | Revise que no esté llamando `hasFeature` con mayúsculas. Use **minúsculas** |
 | Un módulo nuevo no aparece para el admin | Fue creado después de que el admin heredó por categoría | El admin hereda **automáticamente** si el módulo está en la categoría correcta. Si no aparece, revise `module_category_id` |
 | Se insertó un permiso nuevo pero el usuario sigue sin tenerlo | El caché aún no expiró | Llame a `purgePermissionsBy('user', [id])` o `purgePermissionsBy('role', [id])` para forzar la recarga. Mientras no purgue, el usuario verá los permisos anteriores |

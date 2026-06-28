@@ -46,7 +46,7 @@ INSERT INTO gac_role (id, code) VALUES (1, 'admin'), (2, 'editor');
 
 ```sql
 -- admin tiene acceso total (63) a la categoría "sistema" en todas las sucursales
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('0', 1, '0', 1, '*', 63, '1');
 ```
@@ -65,7 +65,7 @@ VALUES ('0', 1, '0', 1, '*', 63, '1');
 
 ```sql
 -- El usuario 5 puede crear y leer (1+2=3) users, solo en SucursalNorte
-INSERT INTO gac_module_permission
+INSERT INTO gac_permission
     (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
 VALUES ('1', 5, '1', 1, 'SucursalNorte', 3, '1');
 ```

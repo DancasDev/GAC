@@ -143,7 +143,7 @@ class Schema {
                 'index'  => ['module_category_id'],
                 'fk'     => [['module_category_id', 'gac_module_category', 'id']],
             ],
-            'gac_module_permission' => [
+            'gac_permission' => [
                 'columns' => [
                     'id'               => $b('serial'),
                     'from_entity_type' => ['type' => 'enum', 'vals' => ['0', '1', '2'], 'notnull' => true, 'comment' => '0=Rol, 1=Usuario, 2=Cliente'],
@@ -166,7 +166,7 @@ class Schema {
                     'id'          => $b('serial'),
                     'entity_type' => ['type' => 'enum', 'vals' => ['0', '1', '2', '3'], 'notnull' => true, 'comment' => '0=Rol, 1=Usuario, 2=Cliente, 3=Todos'],
                     'entity_id'   => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad'],
-                    'scope_path'  => $b('varchar', 255) + ['notnull' => true, 'default' => '*', 'comment' => 'Ruta jerarquica de alcance (mismo concepto que gac_module_permission)'],
+                    'scope_path'  => $b('varchar', 255) + ['notnull' => true, 'default' => '*', 'comment' => 'Ruta jerarquica de alcance (mismo concepto que gac_permission)'],
                     'type'        => $b('varchar', 30) + ['notnull' => true, 'comment' => 'Tipo: date, ip'],
                     'rule'        => $b('varchar', 30) + ['notnull' => true, 'comment' => 'Regla segun tipo: date=before/after/in_range/out_range, ip=allow/deny'],
                     'config'      => ['type' => 'longtext', 'notnull' => true, 'comment' => 'Configuracion en JSON'],
