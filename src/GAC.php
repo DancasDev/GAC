@@ -387,12 +387,14 @@ class GAC {
         $hasModules = !empty($moduleIds);
         $hasCategories = !empty($categoryIds);
         if ($hasModules || $hasCategories) {
-            $query = 'SELECT a.id, a.module_category_id, a.code, a.is_developing FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id WHERE (';
-            if ($hasCategories) {
+            $query = 'SELECT a.id, a.module_category_id, a.code, a.is_developing FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id';
+            $query .= ' WHERE (';
+            if ($hasCategories && $hasModules) {
+                $query .= 'a.module_category_id IN (' . implode(',', $categoryIds) . ') OR a.id IN (' . implode(',', $moduleIds) . ')';
+            } elseif ($hasCategories) {
                 $query .= 'a.module_category_id IN (' . implode(',', $categoryIds) . ')';
-            }
-            if ($hasModules) {
-                $query .= ' OR a.id IN (' . implode(',', $moduleIds) . ')';
+            } elseif ($hasModules) {
+                $query .= 'a.id IN (' . implode(',', $moduleIds) . ')';
             }
             $query .= ') AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
 

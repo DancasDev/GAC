@@ -14,12 +14,11 @@ class MysqliStatement implements StatementInterface {
     public function execute(?array $params = null): bool {
         if ($params !== null) {
             $types = '';
-            $bind = [];
-            foreach ($params as $k => &$v) {
+            $bind = [&$types];
+            foreach ($params as $k => $v) {
                 $types .= is_int($v) ? 'i' : (is_float($v) ? 'd' : 's');
-                $bind[$k] = &$v;
+                $bind[] = &$params[$k];
             }
-            array_unshift($bind, $types);
             $this->stmt->bind_param(...$bind);
         }
         return $this->stmt->execute();
