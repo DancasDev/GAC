@@ -139,7 +139,51 @@ VALUES ('1', 5, '*', 'ip', 'deny', '{"list":["10.0.5.*"]}');
 
 ---
 
-## 5. Usarlo en PHP
+## 5. Restricción `domain`
+
+Controla acceso según el dominio (hostname) desde donde se hace la solicitud HTTP.
+
+| Regla | ¿Cuándo deniega? |
+|-------|------------------|
+| `allow` | El host **NO está** en la lista |
+| `deny` | El host **SÍ está** en la lista |
+
+### Estructura de la lista
+
+`config` es un JSON con un array `list` de patrones de dominio. Puede usar wildcards (`*`).
+
+```json
+{"list": ["*.miepresa.com", "localhost"]}
+```
+
+- `"*.miepresa.com"` → coincide con `admin.miepresa.com`, `api.miepresa.com`, etc.
+- `"*"` → coincide con cualquier dominio
+- `"localhost"` → solo localhost (útil en desarrollo)
+- `"admin.miepresa.com"` → dominio exacto (sin wildcard)
+
+### Ejemplos
+
+```sql
+-- Solo permitir dominios corporativos
+INSERT INTO gac_restriction (entity_type, entity_id, scope_path, type, rule, config)
+VALUES ('3', 0, '*', 'domain', 'allow', '{"list":["*.miepresa.com","localhost"]}');
+
+-- Bloquear un dominio específico
+INSERT INTO gac_restriction (entity_type, entity_id, scope_path, type, rule, config)
+VALUES ('1', 5, '*', 'domain', 'deny', '{"list":["baneado.ejemplo.com"]}');
+```
+
+### Validar estructura
+
+```php
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'allow', ['list' => ['*.miepresa.com']]);  // true
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'allow', ['list' => 'no-es-array']);       // false
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'invalid_rule', ['list' => []]);           // false
+```
+
+---
+
+## 6. Usarlo en PHP
 
 ```php
 $gac = new GAC($pdo);
@@ -154,11 +198,14 @@ $resultado = $r->run(['date' => ['timestamp' => $hoy]]);
 // Verificar restricción ip
 $resultado = $r->run(['ip' => ['ip' => '192.168.1.50']]);
 
+// Verificar restricción domain
+$resultado = $r->run(['domain' => ['host' => $_SERVER['HTTP_HOST']]]);
+
 // El resultado indica todo
 if ($resultado->passed) {
     // Acceso permitido, no hay restricciones que lo bloqueen
 } else {
-    echo $resultado->type;          // "date" | "ip"
+    echo $resultado->type;          // "date" | "ip" | "domain"
     echo $resultado->rule;          // "in_range" | "allow" | "deny" | etc.
     echo $resultado->message;       // "Acceso denegado: fuera del rango horario"
     echo $resultado->restrictionId; // ID del registro que bloqueó
@@ -179,7 +226,7 @@ if ($resultado->passed) {
 
 ---
 
-## 6. Caché y purga
+## 7. Caché y purga
 
 ```php
 // Al igual que con permisos, las restricciones se cachean

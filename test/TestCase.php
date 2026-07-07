@@ -137,7 +137,8 @@ class TestCase {
             "(1, '1', 1, 0), (2, '1', 2, 0)");
         $ins('gac_restriction', 'entity_type, entity_id, scope_path, type, rule, config',
             "('3', 0, '*', 'date', 'in_range', '{\"sd\":\"%Y-%M-%D 08:00\",\"ed\":\"%Y-%M-%D 18:00\"}'), "
-            . "('3', 0, '*', 'ip', 'allow', '{\"list\":[\"192.168.1.*\",\"10.0.*.*\"]}')");
+            . "('3', 0, '*', 'ip', 'allow', '{\"list\":[\"192.168.1.*\",\"10.0.*.*\"]}'), "
+            . "('3', 0, '*', 'domain', 'allow', '{\"list\":[\"*.miepresa.com\",\"localhost\"]}')");
     }
 
     static function createGAC(): GAC {

@@ -34,6 +34,7 @@ $testFiles = [
     'permissions',
     'result',
     'restrictions',
+    'domain',
     'cache',
     'adapters',
 ];
