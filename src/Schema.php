@@ -94,10 +94,10 @@ class Schema {
                 'comment' => 'Registro de clientes (sistemas externos) como entidad de control de acceso',
                 'columns' => [
                     'id'          => $b('serial'),
-                    'code'        => $b('varchar', 60) + ['notnull' => true, 'comment' => 'Codigo unico que identifica al cliente'],
+                    'name'        => $b('varchar', 60) + ['notnull' => true, 'comment' => 'Nombre unico que identifica al cliente'],
                     'is_disabled' => $en(['0', '1']) + ['comment' => '0=No, 1=Si'],
                 ],
-                'unique' => ['code'],
+                'unique' => ['name'],
             ],
             'gac_role' => [
                 'columns' => [
