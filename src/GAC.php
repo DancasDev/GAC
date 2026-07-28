@@ -7,6 +7,7 @@ use DancasDev\GAC\Restrictions\Restrictions;
 use DancasDev\GAC\Drivers\Cache\CacheInterface;
 use DancasDev\GAC\Drivers\Database\ConnectionInterface;
 use DancasDev\GAC\Drivers\Database\StatementInterface;
+use DancasDev\GAC\Drivers\Database\PdoConnection;
 use PDO;
 
 class GAC {
@@ -29,7 +30,7 @@ class GAC {
 
     public function __construct(ConnectionInterface|PDO $connection, CacheInterface|array|null $cache = null) {
         if ($connection instanceof PDO) {
-            $connection = new \DancasDev\GAC\Drivers\Database\PdoConnection($connection);
+            $connection = new PdoConnection($connection);
         }
         $this->connection = $connection;
         $this->cachekey = 'gac';
@@ -147,7 +148,6 @@ class GAC {
         foreach ($records as $module => $moduleRecords) {
             $best = $this->resolveScope($moduleRecords, $scope);
             if ($best !== null) {
-                unset($best['s']);
                 $result[$module] = $best;
             }
         }
@@ -249,25 +249,15 @@ class GAC {
         return true;
     }
 
-    public function purgePermissionsBy(string $entityType, array $entityIds = []): bool {
-        return $this->purgeCacheBy($entityType, $entityIds);
-    }
-
-    public function purgeRestrictionsBy(string $entityType, array $entityIds = []): bool {
-        if ($entityType === 'global') {
-            if (empty($this->cacheAdapter)) {
-                return false;
-            }
-            $this->cacheAdapter->delete($this->getGlobalCacheKey());
-            return true;
-        }
-
-        return $this->purgeCacheBy($entityType, $entityIds);
-    }
-
-    protected function purgeCacheBy(string $entityType, array $entityIds = []): bool {
+    // ponytail: unified cache purge — perms + restrictions share one cache key
+    public function purgeCacheBy(string $entityType, array $entityIds = []): bool {
         if (empty($this->cacheAdapter)) {
             return false;
+        }
+
+        if ($entityType === 'global') {
+            $this->cacheAdapter->delete($this->getGlobalCacheKey());
+            return true;
         }
 
         if (empty($entityIds)) {

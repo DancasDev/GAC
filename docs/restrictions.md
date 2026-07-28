@@ -232,14 +232,14 @@ if ($resultado->passed) {
 // Al igual que con permisos, las restricciones se cachean
 $gac = new GAC($pdo, ['driver' => 'file', 'path' => __DIR__ . '/cache']);
 
-// Purgar restricciones de un usuario
-$gac->purgeRestrictionsBy('user', [30]);
+// Purgar caché de un usuario
+$gac->purgeCacheBy('user', [30]);
 
-// Purgar restricciones de un rol
-$gac->purgeRestrictionsBy('role', [1]);
+// Purgar caché de un rol
+$gac->purgeCacheBy('role', [1]);
 
-// Purgar restricciones globales
-$gac->purgeRestrictionsBy('global');
+// Purgar caché de restricciones globales
+$gac->purgeCacheBy('global');
 
 // Limpiar todo el caché
 $gac->clearCache(true);
@@ -252,7 +252,7 @@ $gac->clearCache(true);
 | Error | Causa | Solución |
 |-------|-------|----------|
 | La restricción no se aplica y todo pasa | La restricción global es reemplazada por una personal o de rol | Solo una restricción por `type` gana. Si el usuario tiene `date` personal, la global `date` se ignora |
-| Se insertó una restricción nueva pero el usuario sigue sin tenerla | El caché aún no expiró | Llame a `purgeRestrictionsBy('user', [id])`, `purgeRestrictionsBy('role', [id])` o `purgeRestrictionsBy('global')` para forzar la recarga |
+| Se insertó una restricción nueva pero el usuario sigue sin tenerla | El caché aún no expiró | Llame a `purgeCacheBy('user', [id])`, `purgeCacheBy('role', [id])` o `purgeCacheBy('global')` para forzar la recarga |
 | `in_range` deja pasar a las 22:00 | Está interpretando mal: `in_range` **deniega** lo que está FUERA del rango | A las 22:00 (fuera de 08-18) → deniega. Correcto |
 | `out_range` bloquea a las 10:00 | `out_range` **deniega** lo que está DENTRO del rango | Si tu rango es 12-14, a las 10:00 (fuera) → permite |
 | IP con wildcard no matchea | El wildcard solo funciona si el patrón contiene `*` | `"192.168.1.*"` genera un regex automáticamente. `"192.168.1.50"` sin `*` hace match exacto |

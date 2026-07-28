@@ -51,8 +51,64 @@ test('getPermissionList("empresaX/SucursalA") feature=7', function () use ($gac)
     assert($gac->getPermissionList('empresaX/SucursalA')['users']['f'] === 7);
 });
 
-test('purgePermissionsBy', function () use ($gac) {
-    $gac->clearCache();
-    $gac->purgePermissionsBy('user', [1]);
-    assert(true);
+test('purgeCacheBy user returns true and removes cache', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['driver' => 'file', 'path' => __DIR__ . '/../src/writable']);
+    $gac->setEntity('user', 1)->setScope('*');
+    $gac->getPermissions();
+    $key = $gac->getCacheKey();
+    assert(is_array($gac->cacheAdapter->get($key)));
+    assert($gac->purgeCacheBy('user', [1]) === true);
+    assert($gac->cacheAdapter->get($key) === null);
+});
+
+test('purgeCacheBy without cache returns false', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo);
+    $gac->setEntity('user', 1)->setScope('*');
+    assert($gac->purgeCacheBy('user', [1]) === false);
+});
+
+test('purgeCacheBy empty entityIds returns false', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['driver' => 'file', 'path' => __DIR__ . '/../src/writable']);
+    assert($gac->purgeCacheBy('user', []) === false);
+});
+
+// ── Permission unit tests ──────────────────────────────────────────────────
+test('Permission hasFeature named features', function () {
+    $p = new \DancasDev\GAC\Permissions\Permission(['f' => 5]); // create + update
+    assert($p->hasFeature('create'));
+    assert(!$p->hasFeature('read'));
+    assert($p->hasFeature('update'));
+    assert(!$p->hasFeature('delete'));
+    assert(!$p->hasFeature('trash'));
+    assert(!$p->hasFeature('dev'));
+});
+
+test('Permission hasFeature with array (AND)', function () {
+    $p = new \DancasDev\GAC\Permissions\Permission(['f' => 3]); // create + read
+    assert($p->hasFeature(['create', 'read']));
+    assert(!$p->hasFeature(['create', 'delete']));
+});
+
+test('Permission hasFeature empty input returns false', function () {
+    $p = new \DancasDev\GAC\Permissions\Permission(['f' => 63]);
+    assert(!$p->hasFeature(''));
+    assert(!$p->hasFeature([]));
+});
+
+test('Permission hasFeature unknown name returns false', function () {
+    $p = new \DancasDev\GAC\Permissions\Permission(['f' => 63]);
+    assert(!$p->hasFeature('nonexistent'));
+});
+
+test('Permission hasFeature feature=0 has no features', function () {
+    $p = new \DancasDev\GAC\Permissions\Permission(['f' => 0]);
+    assert(!$p->hasFeature('create'));
+    assert(!$p->hasFeature('read'));
+    assert(!$p->hasFeature('dev'));
+});
+
+test('Permission getFeature', function () {
+    assert((new \DancasDev\GAC\Permissions\Permission(['f' => 63]))->getFeature() === 63);
+    assert((new \DancasDev\GAC\Permissions\Permission(['f' => 0]))->getFeature() === null);
+    assert((new \DancasDev\GAC\Permissions\Permission([]))->getFeature() === null);
 });

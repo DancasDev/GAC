@@ -9,7 +9,7 @@ class Permission {
     protected $module_code;
     protected $module_is_developing;
     
-    protected $featureKeys = ['create' => '0', 'read' => '1', 'update' => '2', 'delete' => '3', 'trash' => '4', 'dev' => '5'];
+    protected $featureKeys = ['create' => 1, 'read' => 2, 'update' => 4, 'delete' => 8, 'trash' => 16, 'dev' => 32];
 
     public function __construct(array $data) {
         $this->id = $data['i'] ?? null;
@@ -19,19 +19,19 @@ class Permission {
         $this->module_is_developing = $data['d'] ?? null;
     }
     
-    public function getId() : int {
+    public function getId() : ?int {
         return $this->id;
     }
 
-    public function getModuleCode() : string {
+    public function getModuleCode() : ?string {
         return $this->module_code;
     }
 
-    public function getFeature() : int {
-        return (int) $this->feature;
+    public function getFeature() : ?int {
+        return empty($this->feature) ? null : (int) $this->feature;
     }
 
-    public function getLevel() : int {
+    public function getLevel() : ?int {
         return $this->level;
     }
 
@@ -57,10 +57,10 @@ class Permission {
         }
 
         $bits = (int) $this->feature;
-        $feature = is_array($feature) ? $feature : [$feature];
+        $feature = (array) $feature;
         foreach ($feature as $value) {
-            $bit = (int) ($this->featureKeys[$value] ?? $value);
-            if (!($bits & (1 << $bit))) {
+            $mask = $this->featureKeys[$value] ?? ((int) $value);
+            if (!($bits & $mask)) {
                 return false;
             }
         }

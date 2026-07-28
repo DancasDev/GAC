@@ -309,10 +309,10 @@ $gac = new GAC($pdo, ['driver' => 'file', 'path' => __DIR__ . '/cache', 'ttl' =>
 $gac->clearCache();
 
 // Cuando modifique permisos de un usuario, purgue su caché
-$gac->purgePermissionsBy('user', [30]);
+$gac->purgeCacheBy('user', [30]);
 
 // Si modificaste un rol
-$gac->purgePermissionsBy('role', [1]);
+$gac->purgeCacheBy('role', [1]);
 ```
 
 ---
@@ -324,6 +324,6 @@ $gac->purgePermissionsBy('role', [1]);
 | `$p->get('users')` devuelve `null` | El usuario/rol no tiene permiso para ese módulo | Verifique los INSERTs en `gac_permission` |
 | `hasFeature('read')` devuelve `false` cuando `feature=3` | `feature=3` = crear+leer. El bit de lectura (1) sí está | Revise que no esté llamando `hasFeature` con mayúsculas. Use **minúsculas** |
 | Un módulo nuevo no aparece para el admin | Fue creado después de que el admin heredó por categoría | El admin hereda **automáticamente** si el módulo está en la categoría correcta. Si no aparece, revise `module_category_id` |
-| Se insertó un permiso nuevo pero el usuario sigue sin tenerlo | El caché aún no expiró | Llame a `purgePermissionsBy('user', [id])` o `purgePermissionsBy('role', [id])` para forzar la recarga. Mientras no purgue, el usuario verá los permisos anteriores |
+| Se insertó un permiso nuevo pero el usuario sigue sin tenerlo | El caché aún no expiró | Llame a `purgeCacheBy('user', [id])` o `purgeCacheBy('role', [id])` para forzar la recarga. Mientras no purgue, el usuario verá los permisos anteriores |
 | Scope `'empresaX'` no cubre `'empresaX/Sucursal'` | Sin `/*` no hereda | Use `'empresaX/*'` |
 | Dos permisos compiten y gana el que no esperaba | La prioridad personal (`-1`) siempre gana sobre el rol | Si desea que el rol defina el permiso, no cree un permiso personal que solape |

@@ -138,3 +138,21 @@ $gac->clearCache();
 // Limpiar también el caché global (restricciones globales)
 $gac->clearCache(true);
 ```
+
+---
+
+## 6. Purgar caché por entidad
+
+Como permisos y restricciones de una entidad comparten la misma clave de caché,
+un solo método unificado los purga a ambos:
+
+```php
+// Purgar caché de un usuario específico
+$gac->purgeCacheBy('user', [30]);
+
+// Purgar caché de un rol (todos los usuarios con ese rol)
+$gac->purgeCacheBy('role', [1]);
+
+// Purgar caché de restricciones globales
+$gac->purgeCacheBy('global');
+```

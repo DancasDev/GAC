@@ -156,16 +156,22 @@ test('personal out_range gana sobre rol before', function () {
 });
 
 // ── Purge ───────────────────────────────────────────────────────────────────
-test('purgeRestrictionsBy global', function () {
-    $gac = TestCase::createGAC();
-    $gac->clearCache();
-    $gac->purgeRestrictionsBy('global');
-    assert(true);
+test('purgeCacheBy global removes global cache key', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['driver' => 'file', 'path' => __DIR__ . '/../src/writable']);
+    $gac->setEntity('user', 1)->setScope('*');
+    $gac->getRestrictions(); // populate entity + global cache
+    $key = $gac->getGlobalCacheKey();
+    assert(is_array($gac->cacheAdapter->get($key)));
+    assert($gac->purgeCacheBy('global') === true);
+    assert($gac->cacheAdapter->get($key) === null);
 });
 
-test('purgeRestrictionsBy role', function () {
-    $gac = TestCase::createGAC();
-    $gac->clearCache();
-    $gac->purgeRestrictionsBy('role', [1]);
-    assert(true);
+test('purgeCacheBy role removes affected entity cache keys', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['driver' => 'file', 'path' => __DIR__ . '/../src/writable']);
+    $gac->setEntity('user', 1)->setScope('*');
+    $gac->getPermissions(); // populates cache for user 1 (role=admin, role_id=1)
+    $key = $gac->getCacheKey();
+    assert(is_array($gac->cacheAdapter->get($key)));
+    assert($gac->purgeCacheBy('role', [1]) === true);
+    assert($gac->cacheAdapter->get($key) === null);
 });
