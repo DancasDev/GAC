@@ -11,6 +11,7 @@ class ByDate implements RestrictionHandlerInterface {
         'in_range'  => 'inRange',
         'out_range' => 'outRange',
         'after'     => 'after',
+        'by_day'    => 'byDay',
     ];
 
     public function validate(array $rules, array $context): RestrictionResult {
@@ -36,6 +37,9 @@ class ByDate implements RestrictionHandlerInterface {
             'in_range', 'out_range' => isset($data['sd'], $data['ed'])
                 && is_string($data['sd']) && is_string($data['ed'])
                 ? ['sd' => $data['sd'], 'ed' => $data['ed']] : false,
+            'by_day' => isset($data['d']) && is_array($data['d']) && $data['d'] !== []
+                && !array_filter($data['d'], fn($v) => !is_string($v) || !ctype_digit($v) || (int)$v < 0 || (int)$v > 6)
+                ? ['d' => $data['d']] : false,
             default => false,
         };
     }
@@ -105,6 +109,18 @@ class ByDate implements RestrictionHandlerInterface {
 
         if ($context['timestamp'] <= $d) {
             return $this->fail($rule, $d, $context, 'Date is before the allowed start');
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    protected function byDay(array $rule, array $context): RestrictionResult {
+        $allowed = $rule['c']['d'] ?? [];
+        $timestamp = $context['timestamp'] ?? time();
+        $currentDay = (string)date('w', $timestamp);
+
+        if (!in_array($currentDay, $allowed, true)) {
+            return $this->fail($rule, ['d' => $allowed], $context, 'Day is not allowed');
         }
 
         return new RestrictionResult(true);

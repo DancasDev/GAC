@@ -303,16 +303,25 @@ GAC cachea los permisos para no consultar la base de datos en cada request.
 
 ```php
 // Constructor con caché a archivo
-$gac = new GAC($pdo, ['driver' => 'file', 'path' => __DIR__ . '/cache', 'ttl' => 3600]);
+$gac = new GAC($pdo, ['dir' => __DIR__ . '/cache', 'ttl' => 3600]);
 
-// Limpiar caché manual
+// Limpiar caché de la entidad actual
 $gac->clearCache();
+
+// Limpiar también el caché global (restricciones globales)
+$gac->clearCache(true);
 
 // Cuando modifique permisos de un usuario, purgue su caché
 $gac->purgeCacheBy('user', [30]);
 
 // Si modificaste un rol
 $gac->purgeCacheBy('role', [1]);
+
+// Si modificaste permisos de un cliente
+$gac->purgeCacheBy('client', [5]);
+
+// Si modificaste restricciones globales
+$gac->purgeCacheBy('global');
 ```
 
 ---

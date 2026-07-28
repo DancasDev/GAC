@@ -157,6 +157,62 @@ test('validateStructure register handler funciona', function () {
     assert(\DancasDev\GAC\Restrictions\Restrictions::validateStructure('test_type', 'allow', ['list' => ['1.1.1.1']]));
 });
 
+// ── by_day ──────────────────────────────────────────────────────────────────
+test('by_day: domingo (0) permitido cuando d=[0]', function () {
+    $pdo = TestCase::$pdo;
+    $pdo->exec("DELETE FROM gac_restriction WHERE type='date' AND entity_type='1' AND entity_id=1");
+    $pdo->exec("INSERT INTO gac_restriction (entity_type, entity_id, scope_path, type, rule, config) VALUES
+        ('1', 1, '*', 'date', 'by_day', '{\"d\":[\"0\"]}')");
+
+    $gac = new \DancasDev\GAC\GAC($pdo);
+    $gac->setEntity('user', 1)->setScope('*');
+    $r2 = $gac->getRestrictions(false);
+
+    // 2026-01-04 = Sunday (0)
+    $ts = strtotime('2026-01-04');
+    assert(date('w', $ts) === '0');
+    assert($r2->run(['date' => ['timestamp' => $ts]])->passed);
+});
+
+test('by_day: lunes (1) denegado cuando d=[0]', function () {
+    $pdo = TestCase::$pdo;
+    $pdo->exec("DELETE FROM gac_restriction WHERE type='date' AND entity_type='1' AND entity_id=1");
+    $pdo->exec("INSERT INTO gac_restriction (entity_type, entity_id, scope_path, type, rule, config) VALUES
+        ('1', 1, '*', 'date', 'by_day', '{\"d\":[\"0\"]}')");
+
+    $gac = new \DancasDev\GAC\GAC($pdo);
+    $gac->setEntity('user', 1)->setScope('*');
+    $r2 = $gac->getRestrictions(false);
+
+    // 2026-01-05 = Monday (1)
+    $ts = strtotime('2026-01-05');
+    assert(date('w', $ts) === '1');
+    $res = $r2->run(['date' => ['timestamp' => $ts]]);
+    assert(!$res->passed && $res->rule === 'by_day');
+});
+
+test('validateStructure date by_day valido', function () {
+    $result = \DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['0', '1', '5']]);
+    assert($result === ['d' => ['0', '1', '5']]);
+});
+
+test('validateStructure date by_day array vacio = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => []]));
+});
+
+test('validateStructure date by_day valor invalido = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['0', '7']]));
+});
+
+test('validateStructure date by_day sin d = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', []));
+});
+
+test('validateStructure date by_day ignora keys extra', function () {
+    $result = \DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['1', '3'], 'extra' => 'x']);
+    assert($result === ['d' => ['1', '3']]);
+});
+
 // ── Combinaciones ───────────────────────────────────────────────────────────
 test('after: 2027-01-01 > 2026-01-01 = permitido', function () {
     $pdo = TestCase::$pdo;
@@ -205,7 +261,7 @@ test('personal out_range gana sobre rol before', function () {
 
 // ── Purge ───────────────────────────────────────────────────────────────────
 test('purgeCacheBy global removes global cache key', function () {
-    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['driver' => 'file', 'path' => __DIR__ . '/../src/writable']);
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['dir' => __DIR__ . '/../src/writable']);
     $gac->setEntity('user', 1)->setScope('*');
     $gac->getRestrictions(); // populate entity + global cache
     $key = $gac->getGlobalCacheKey();
@@ -215,7 +271,7 @@ test('purgeCacheBy global removes global cache key', function () {
 });
 
 test('purgeCacheBy role removes affected entity cache keys', function () {
-    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['driver' => 'file', 'path' => __DIR__ . '/../src/writable']);
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo, ['dir' => __DIR__ . '/../src/writable']);
     $gac->setEntity('user', 1)->setScope('*');
     $gac->getPermissions(); // populates cache for user 1 (role=admin, role_id=1)
     $key = $gac->getCacheKey();

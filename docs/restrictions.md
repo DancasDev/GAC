@@ -1,7 +1,7 @@
 # Restricciones
 
-Las restricciones limitan el acceso según condiciones externas: **fecha y hora** o
-**dirección IP**. Se definen por tipo (`date`, `ip`) y regla (`before`, `allow`, etc.).
+Las restricciones limitan el acceso según condiciones externas: **fecha y hora**,
+**dirección IP** o **dominio**. Se definen por tipo (`date`, `ip`, `domain`) y regla (`before`, `allow`, etc.).
 
 ---
 
@@ -20,7 +20,7 @@ Schema::install($pdo); // Crea gac_restriction junto con las demás tablas
 | `entity_type` | ENUM('0','1','2','3') | `'0'`=rol, `'1'`=usuario, `'2'`=cliente, `'3'`=global |
 | `entity_id` | INT | ID de la entidad. `0` cuando es global |
 | `scope_path` | VARCHAR(255) | Alcance (misma lógica que permisos) |
-| `type` | VARCHAR(30) | Tipo: `date`, `ip` |
+| `type` | VARCHAR(30) | Tipo: `date`, `ip`, `domain` |
 | `rule` | VARCHAR(30) | Regla según el tipo |
 | `config` | LONGTEXT | JSON con los parámetros de la regla |
 | `is_disabled` | ENUM('0','1') | `'0'` = activo |
@@ -53,12 +53,16 @@ Controla acceso según fecha y hora.
 | `after` | La fecha actual **es posterior** a `d` | `{"d":"2026-01-01"}` |
 | `in_range` | El timestamp **NO está** entre `sd` y `ed` | `{"sd":"%Y-%M-%D 08:00","ed":"%Y-%M-%D 18:00"}` |
 | `out_range` | El timestamp **SÍ está** entre `sd` y `ed` | `{"sd":"%Y-%M-%D 12:00","ed":"%Y-%M-%D 14:00"}` |
+| `by_day` | El día de la semana **NO está** en la lista `d` | `{"d":["0","1","2","3","4","5","6"]}` (0=domingo, 6=sábado) |
 
 ### Comodines de fecha
 
 Los placeholders `%Y`, `%M`, `%D` se reemplazan automáticamente por el año, mes y
 día **actuales** al momento de validar. Esto permite definir horarios recurrentes
 sin hardcodear fechas.
+
+> Los placeholders funcionan con **todas** las reglas de `date`. En `before`/`after`,
+> `{"d":"%Y-%M-%D"}` equivale a "hoy a las 00:00".
 
 ### Ejemplos
 
@@ -78,6 +82,10 @@ VALUES ('3', 0, '*', 'date', 'out_range', '{"sd":"%Y-%M-%D 12:00","ed":"%Y-%M-%D
 -- El usuario 10 no puede acceder después del 1 de julio de 2026
 INSERT INTO gac_restriction (entity_type, entity_id, scope_path, type, rule, config)
 VALUES ('1', 10, '*', 'date', 'after', '{"d":"2026-07-01"}');
+
+-- Solo fines de semana (domingo y sábado)
+INSERT INTO gac_restriction (entity_type, entity_id, scope_path, type, rule, config)
+VALUES ('3', 0, '*', 'date', 'by_day', '{"d":["0","6"]}');
 ```
 
 > Cuando usa `in_range`, **deniega** si la hora está **fuera** del rango.
@@ -86,11 +94,27 @@ VALUES ('1', 10, '*', 'date', 'after', '{"d":"2026-07-01"}');
 ### Validar estructura antes de insertar
 
 ```php
-// Antes de guardar un registro, confirme que la estructura sea correcta
-\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'before', ['d' => '2026-01-01']);  // true
-\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'before', []);                     // false (falta d)
-\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'in_range', ['sd' => '...', 'ed' => '...']); // true
-\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'in_range', ['sd' => '...']);      // false (falta ed)
+// before / after: requiere d (string con fecha)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'before', ['d' => '2026-01-01']);         // ['d' => '2026-01-01']
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'after',  ['d' => '2026-01-01']);         // ['d' => '2026-01-01']
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'before', []);                             // false (falta d)
+
+// in_range / out_range: requiere sd y ed (strings con fecha)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'in_range', ['sd' => '08:00', 'ed' => '18:00']);  // ['sd' => '08:00', 'ed' => '18:00']
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'out_range', ['sd' => '12:00', 'ed' => '14:00']); // ['sd' => '12:00', 'ed' => '14:00']
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'in_range', ['sd' => '08:00']);                // false (falta ed)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'out_range', ['ed' => '14:00']);               // false (falta sd)
+
+// by_day: requiere d (array de strings "0" a "6")
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['1','2','3','4','5']]);  // ['d' => ['1','2','3','4','5']] (lunes a viernes)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['0','6']]);              // ['d' => ['0','6']] (solo finde)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => []]);                     // false (array vacío)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['0','7']]);              // false (7 no es válido)
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', []);                             // false (falta d)
+
+// También filtra keys extra que no pertenecen a la regla
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'before', ['d' => '2026-01-01', 'extra' => 'x']);  // ['d' => '2026-01-01']
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'by_day', ['d' => ['0'], 'extra' => 'x']);         // ['d' => ['0']]
 ```
 
 ---
@@ -132,7 +156,7 @@ VALUES ('1', 5, '*', 'ip', 'deny', '{"list":["10.0.5.*"]}');
 ### Validar estructura
 
 ```php
-\DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'allow', ['list' => ['192.168.1.*']]);    // true
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'allow', ['list' => ['192.168.1.*']]);    // ['list' => ['192.168.1.*']]
 \DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'allow', ['list' => 'no-es-array']);      // false
 \DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'invalid_rule', ['list' => []]);          // false
 ```
@@ -176,7 +200,7 @@ VALUES ('1', 5, '*', 'domain', 'deny', '{"list":["baneado.ejemplo.com"]}');
 ### Validar estructura
 
 ```php
-\DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'allow', ['list' => ['*.miepresa.com']]);  // true
+\DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'allow', ['list' => ['*.miepresa.com']]);  // ['list' => ['*.miepresa.com']]
 \DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'allow', ['list' => 'no-es-array']);       // false
 \DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'invalid_rule', ['list' => []]);           // false
 ```
@@ -230,7 +254,7 @@ if ($resultado->passed) {
 
 ```php
 // Al igual que con permisos, las restricciones se cachean
-$gac = new GAC($pdo, ['driver' => 'file', 'path' => __DIR__ . '/cache']);
+$gac = new GAC($pdo, ['dir' => __DIR__ . '/cache']);
 
 // Purgar caché de un usuario
 $gac->purgeCacheBy('user', [30]);
@@ -255,5 +279,7 @@ $gac->clearCache(true);
 | Se insertó una restricción nueva pero el usuario sigue sin tenerla | El caché aún no expiró | Llame a `purgeCacheBy('user', [id])`, `purgeCacheBy('role', [id])` o `purgeCacheBy('global')` para forzar la recarga |
 | `in_range` deja pasar a las 22:00 | Está interpretando mal: `in_range` **deniega** lo que está FUERA del rango | A las 22:00 (fuera de 08-18) → deniega. Correcto |
 | `out_range` bloquea a las 10:00 | `out_range` **deniega** lo que está DENTRO del rango | Si tu rango es 12-14, a las 10:00 (fuera) → permite |
+| `by_day` con `["0"]` deniega los lunes | `by_day` es allow-list: solo los días listados están permitidos | Si querés bloquear solo los lunes, listá los otros 6 días |
 | IP con wildcard no matchea | El wildcard solo funciona si el patrón contiene `*` | `"192.168.1.*"` genera un regex automáticamente. `"192.168.1.50"` sin `*` hace match exacto |
-| `validateStructure` devuelve `false` | Te falta un campo obligatorio en el `config` | Cada regla tiene sus campos requeridos: `before`/`after` necesitan `d`, `in_range`/`out_range` necesitan `sd` y `ed`, `allow`/`deny` necesitan `list` como array |
+| Dominio con wildcard no matchea | `*` solo coincide con subdominios, no con el dominio base | `"*.ejemplo.com"` no cubre `ejemplo.com`, necesitás agregarlo explícitamente: `["*.ejemplo.com", "ejemplo.com"]` |
+| `validateStructure` devuelve `false` | Te falta un campo obligatorio en el `config` | Cada regla tiene sus campos requeridos: `before`/`after` necesitan `d`, `in_range`/`out_range` necesitan `sd` y `ed`, `by_day` necesita `d` como array con valores `"0"`–`"6"`, `allow`/`deny` necesitan `list` como array |
