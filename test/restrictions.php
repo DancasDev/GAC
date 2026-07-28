@@ -109,6 +109,54 @@ test('validateStructure ip list no array = false', function () {
     assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'allow', ['list' => 'not-array']));
 });
 
+test('validateStructure date after valido', function () {
+    assert(\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'after', ['d' => '2026-01-01']));
+});
+
+test('validateStructure date after sin d = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'after', []));
+});
+
+test('validateStructure date out_range valido', function () {
+    assert(\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'out_range', ['sd' => '12:00', 'ed' => '14:00']));
+});
+
+test('validateStructure date out_range sin sd = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'out_range', ['ed' => '14:00']));
+});
+
+test('validateStructure date in_range sin sd = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'in_range', ['ed' => '18:00']));
+});
+
+test('validateStructure ip deny list no array = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'deny', ['list' => 'no-array']));
+});
+
+test('validateStructure domain deny sin list = false', function () {
+    assert(!\DancasDev\GAC\Restrictions\Restrictions::validateStructure('domain', 'deny', []));
+});
+
+test('validateStructure date before ignora keys extra', function () {
+    $result = \DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'before', ['d' => '2026-01-01', 'extra' => 'x']);
+    assert($result === ['d' => '2026-01-01']);
+});
+
+test('validateStructure date in_range ignora keys extra', function () {
+    $result = \DancasDev\GAC\Restrictions\Restrictions::validateStructure('date', 'in_range', ['sd' => '08:00', 'ed' => '18:00', 'extra' => 'x']);
+    assert($result === ['sd' => '08:00', 'ed' => '18:00']);
+});
+
+test('validateStructure ip allow ignora keys extra', function () {
+    $result = \DancasDev\GAC\Restrictions\Restrictions::validateStructure('ip', 'allow', ['list' => ['10.0.0.1'], 'extra' => 'x']);
+    assert($result === ['list' => ['10.0.0.1']]);
+});
+
+test('validateStructure register handler funciona', function () {
+    \DancasDev\GAC\Restrictions\Restrictions::register('test_type', \DancasDev\GAC\Restrictions\Handlers\ByIp::class);
+    assert(\DancasDev\GAC\Restrictions\Restrictions::validateStructure('test_type', 'allow', ['list' => ['1.1.1.1']]));
+});
+
 // ── Combinaciones ───────────────────────────────────────────────────────────
 test('after: 2027-01-01 > 2026-01-01 = permitido', function () {
     $pdo = TestCase::$pdo;

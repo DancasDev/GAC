@@ -27,7 +27,7 @@ class ByIp implements RestrictionHandlerInterface {
         return new RestrictionResult(true);
     }
 
-    public static function structureIsValid(string $rule, array $data): bool {
+    public static function structureIsValid(string $rule, array $data): array|false {
         if (!in_array($rule, ['allow', 'deny'], true)) {
             return false;
         }
@@ -39,7 +39,7 @@ class ByIp implements RestrictionHandlerInterface {
                 return false;
             }
         }
-        return true;
+        return ['list' => $data['list']];
     }
 
     protected function allow(array $rule, array $context): RestrictionResult {

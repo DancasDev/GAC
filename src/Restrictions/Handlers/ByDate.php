@@ -29,11 +29,14 @@ class ByDate implements RestrictionHandlerInterface {
         return new RestrictionResult(true);
     }
 
-    public static function structureIsValid(string $rule, array $data): bool {
+    public static function structureIsValid(string $rule, array $data): array|false {
         return match ($rule) {
-            'before', 'after'      => isset($data['d']) && is_string($data['d']),
-            'in_range', 'out_range' => isset($data['sd'], $data['ed']) && is_string($data['sd']) && is_string($data['ed']),
-            default                => false,
+            'before', 'after' => isset($data['d']) && is_string($data['d'])
+                ? ['d' => $data['d']] : false,
+            'in_range', 'out_range' => isset($data['sd'], $data['ed'])
+                && is_string($data['sd']) && is_string($data['ed'])
+                ? ['sd' => $data['sd'], 'ed' => $data['ed']] : false,
+            default => false,
         };
     }
 

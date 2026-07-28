@@ -76,7 +76,7 @@ class Restrictions {
     }
 
     /** Validate data structure for a given type + rule */
-    public static function validateStructure(string $type, string $rule, array $data): bool {
+    public static function validateStructure(string $type, string $rule, array $data): array|false {
         $class = self::$handlerMap[$type] ?? null;
         if ($class === null) {
             return false;
