@@ -37,11 +37,11 @@ test('MysqliConnection prepare with params', function () {
     $c = new mysqli('127.0.0.1', 'root', '', TestCase::$dbname, 3306);
     if ($c->connect_error) throw new \Exception($c->connect_error);
     $a = new MysqliConnection($c);
-    $s = $a->prepare('SELECT code FROM gac_role WHERE id = ' . $a->param());
+    $s = $a->prepare('SELECT id FROM gac_role WHERE id = ' . $a->param());
     $s->execute([1]);
     $r = $s->fetchAll();
     assert(count($r) === 1);
-    assert($r[0]['code'] === 'admin');
+    assert((int)$r[0]['id'] === 1);
     $c->close();
 });
 
@@ -103,11 +103,11 @@ test('PgsqlConnection prepare with params', function () {
     $c = @pg_connect('host=127.0.0.1 port=5432 dbname=' . TestCase::$dbname . ' user=postgres');
     if ($c === false) throw new \Exception('pg_connect failed');
     $a = new PgsqlConnection($c);
-    $s = $a->prepare('SELECT code FROM gac_role WHERE id = ' . $a->param());
+    $s = $a->prepare('SELECT id FROM gac_role WHERE id = ' . $a->param());
     $s->execute([1]);
     $r = $s->fetchAll();
     assert(count($r) === 1);
-    assert($r[0]['code'] === 'admin');
+    assert((int)$r[0]['id'] === 1);
     pg_close($c);
 });
 

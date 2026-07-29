@@ -102,10 +102,8 @@ class Schema {
             'gac_role' => [
                 'columns' => [
                     'id'          => $b('serial'),
-                    'code'        => $b('varchar', 30) + ['notnull' => true, 'comment' => 'Codigo unico del rol (ej: system_administrator)'],
                     'is_disabled' => $en(['0', '1']) + ['comment' => '0=No, 1=Si'],
                 ],
-                'unique' => ['code'],
             ],
             'gac_role_entity' => [
                 'columns' => [

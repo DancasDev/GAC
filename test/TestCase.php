@@ -128,7 +128,7 @@ class TestCase {
             "(1, 2, 'my_profile', '0'), (2, 2, 'my_user', '0'), (3, 1, 'users', '0'), "
             . "(4, 1, 'user_access', '0'), (5, 1, 'roles', '0'), "
             . "(6, 3, 'directory_people', '0'), (7, 1, 'clients', '0')");
-        $ins('gac_role', 'id, code', "(1, 'admin'), (2, 'viewer')");
+        $ins('gac_role', 'id', "(1), (2)");
         $ins('gac_permission', 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level',
             "('0', 1, '0', 1, '*', 63, '1'), ('0', 1, '0', 2, '*', 63, '1'), ('0', 1, '0', 3, '*', 2, '1'), ('0', 2, '0', 1, '*', 2, '1')");
         $ins('gac_permission', 'from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level',

@@ -39,7 +39,7 @@ INSERT INTO gac_module_category (id, code) VALUES (1, 'sistema');
 
 INSERT INTO gac_module (id, module_category_id, code) VALUES (1, 1, 'users');
 
-INSERT INTO gac_role (id, code) VALUES (1, 'admin'), (2, 'editor');
+INSERT INTO gac_role (id) VALUES (1), (2);
 ```
 
 ### Paso 3 — Asignar permisos al rol `admin`

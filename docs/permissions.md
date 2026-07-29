@@ -41,7 +41,6 @@ Cada módulo pertenece a una categoría.
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `id` | INT AUTO_INCREMENT | Identificador |
-| `code` | VARCHAR(30) | Código único (`admin`) |
 | `is_disabled` | ENUM('0','1') | `'0'` = activo |
 
 ### `gac_role_entity` — Quién tiene qué rol
@@ -117,7 +116,7 @@ INSERT INTO gac_module (id, module_category_id, code, is_developing) VALUES
 ### 3.2 Cree roles y asigne usuarios
 
 ```sql
-INSERT INTO gac_role (id, code) VALUES (1, 'admin'), (2, 'viewer');
+INSERT INTO gac_role (id) VALUES (1), (2);
 
 INSERT INTO gac_role_entity (role_id, entity_type, entity_id, priority) VALUES
     (1, '1', 10, 0),  -- usuario 10 es admin (rol principal)
@@ -258,7 +257,7 @@ INSERT INTO gac_module_category (id, code) VALUES (1, 'sistema');
 INSERT INTO gac_module (id, module_category_id, code) VALUES (1, 1, 'users');
 
 -- Paso 2: rol
-INSERT INTO gac_role (id, code) VALUES (1, 'admin');
+INSERT INTO gac_role (id) VALUES (1);
 
 -- Paso 3: permiso (feature=63 = todo)
 INSERT INTO gac_permission

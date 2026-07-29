@@ -588,7 +588,7 @@ class GAC {
         if ($reset || empty($this->entityRoleData)) {
             $data = ['list' => [], 'priority' => []];
             $c = $this->connection;
-            $query = 'SELECT b.id, b.code, a.priority';
+            $query = 'SELECT b.id, a.priority';
             $query .= ' FROM gac_role_entity AS a INNER JOIN gac_role AS b ON a.role_id = b.id';
             $query .= ' WHERE a.entity_type = ' . $c->param() . ' AND a.entity_id = ' . $c->param() . ' AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
             $query .= ' ORDER BY a.priority ASC';
