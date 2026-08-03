@@ -62,13 +62,13 @@ Vincula usuarios o clientes a roles, con prioridad.
 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
-| `from_entity_type` | ENUM('0','1','2') | `'0'`=rol, `'1'`=usuario, `'2'`=cliente |
-| `from_entity_id` | INT | ID del rol, usuario o cliente |
-| `to_entity_type` | ENUM('0','1') | `'0'`=categoría, `'1'`=módulo directo |
-| `to_entity_id` | INT | ID de la categoría o módulo destino |
+| `module_id` | INT | FK a `gac_module(id)` — módulo al que se otorga el permiso |
+| `entity_type` | ENUM('0','1','2') | `'0'`=rol, `'1'`=usuario, `'2'`=cliente |
+| `entity_id` | INT | ID del rol, usuario o cliente |
 | `scope_path` | VARCHAR(255) | Alcance: `*`, `empresaX`, `empresaX/*` |
 | `feature` | SMALLINT | Bitmask de accesos |
 | `level` | ENUM('0','1','2') | `'0'`=bajo, `'1'`=normal, `'2'`=alto |
+| `payload` | LONGTEXT | Datos extra en JSON (p. ej. `{"locker_ids":[1,2]}`), NULL si no tiene |
 | `is_disabled` | ENUM('0','1') | `'0'` = activo |
 
 ---
@@ -123,25 +123,26 @@ INSERT INTO gac_role_entity (role_id, entity_type, entity_id, priority) VALUES
     (2, '1', 20, 0);  -- usuario 20 es viewer (rol principal)
 ```
 
-### 3.3 Asigne permisos por categoría (a todo un rol)
+### 3.3 Asigne permisos al rol `admin`
 
 ```sql
--- El rol admin tiene control total (63) sobre todos los módulos
--- de la categoría "sistema" en cualquier sucursal
+-- El rol admin tiene control total (63) sobre los módulos de "sistema"
+-- en cualquier sucursal
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('0', 1, '0', 1, '*', 63, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '0', 1, '*', 63, '1'),  -- users
+       (2, '0', 1, '*', 63, '1');  -- roles
 ```
 
-> Al usar `to_entity_type='0'` (categoría), el permiso se **expande** a todos los
-> módulos de esa categoría. Si crea un módulo nuevo en `sistema`, el admin lo
-> hereda automáticamente.
+> Los permisos apuntan **directamente a un módulo** (`module_id`). No hay
+> permisos por categoría: si agrega un módulo nuevo, debe otorgarle permiso
+> explícitamente.
 
 ```sql
--- El rol viewer solo puede leer (2) los módulos de "sistema"
+-- El rol viewer solo puede leer (2) el módulo "users"
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('0', 2, '0', 1, '*', 2, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '0', 2, '*', 2, '1');
 ```
 
 ### 3.4 Asigne permisos directos (a un usuario sobre un módulo)
@@ -150,14 +151,14 @@ VALUES ('0', 2, '0', 1, '*', 2, '1');
 -- El usuario 30 (que por rol es viewer) puede editar users
 -- pero solo en la sucursal "Tigre"
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('1', 30, '1', 1, 'Tigre/*', 7, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '1', 30, 'Tigre/*', 7, '1');
 ```
 
 | Campo | ¿Por qué este valor? |
 |-------|---------------------|
-| `from_entity_type='1'` | Es un usuario, no un rol |
-| `to_entity_type='1'` | Permiso directo al módulo, no por categoría |
+| `module_id=1` | Módulo `users` (FK a `gac_module`) |
+| `entity_type='1'` | Es un usuario, no un rol |
 | `scope_path='Tigre/*'` | Aplica a Tigre y sus sub-sucursales |
 | `feature=7` | Crear + Leer + Actualizar |
 
@@ -197,8 +198,8 @@ Cuando un mismo módulo tiene permisos de distintas fuentes, GAC elige por prior
 
 | Fuente | Prioridad | Cuándo gana |
 |--------|-----------|-------------|
-| Permiso personal (`from_entity_type='1'` o `'2'`) | `-1` (máxima) | Siempre que exista |
-| Permiso de rol (`from_entity_type='0'`) | `priority` de `gac_role_entity` | Si no hay permiso personal |
+| Permiso personal (`entity_type='1'` o `'2'`) | `-1` (máxima) | Siempre que exista |
+| Permiso de rol (`entity_type='0'`) | `priority` de `gac_role_entity` | Si no hay permiso personal |
 
 La deduplicación es por **combinación `(módulo, scope_path)`**. Esto significa que
 un usuario puede tener un permiso personal con scope `'Tigre'` y heredar el permiso
@@ -231,6 +232,35 @@ if ($p->has('users')) {
 }
 ```
 
+### Datos extra del permiso (`payload`)
+
+El campo `payload` guarda datos JSON arbitrarios que el controlador usa para
+**restringir aún más** el acceso. Ejemplo: un módulo sube archivos a "lockers" y
+ciertos usuarios solo pueden subir a determinados lockers.
+
+```sql
+-- El usuario 30 puede subir archivos, pero SOLO a los lockers 1 y 2
+INSERT INTO gac_permission
+    (module_id, entity_type, entity_id, scope_path, feature, level, payload)
+VALUES (5, '1', 30, '*', 1, '1', '{"locker_ids":[1,2]}');
+```
+
+```php
+$permiso = $gac->getPermissions()->get('files');
+
+if ($permiso && $permiso->hasFeature('create')) {
+    $lockers = $permiso->getPayload()['locker_ids'] ?? [];  // [1, 2]
+
+    // En el controlador: valida que el locker destino esté permitido
+    if (!in_array($lockerId, $lockers)) {
+        throw new \Exception('No tienes acceso a ese locker');
+    }
+}
+```
+
+> `getPayload()` devuelve el array decodificado, o `NULL` si el permiso no tiene
+> payload. El JSON es libre: la estructura depende de cada módulo.
+
 ### Listar todos los permisos (sin resolver scope)
 
 ```php
@@ -261,8 +291,8 @@ INSERT INTO gac_role (id) VALUES (1);
 
 -- Paso 3: permiso (feature=63 = todo)
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('0', 1, '0', 1, '*', 63, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '0', 1, '*', 63, '1');
 
 -- Paso 4: asignar usuario 10 al rol admin
 INSERT INTO gac_role_entity (role_id, entity_type, entity_id, priority)
@@ -276,8 +306,8 @@ VALUES (1, '1', 10, 0);
 -- Le damos permiso extra personal sobre users en "Tigre"
 
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('1', 30, '1', 1, 'Tigre/*', 7, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '1', 30, 'Tigre/*', 7, '1');
 -- feature=7 = crear(1) + leer(2) + actualizar(4)
 ```
 
@@ -325,13 +355,57 @@ $gac->purgeCacheBy('global');
 
 ---
 
+## Migrar desde la versión con categorías
+
+Los permisos ya no apuntan a categorías: ahora `module_id` referencia un módulo
+directamente, y `from_entity_type`/`from_entity_id` pasan a llamarse
+`entity_type`/`entity_id`. Para migrar una instalación existente:
+
+```sql
+-- 1. Nuevas columnas (MySQL)
+ALTER TABLE gac_permission
+    ADD COLUMN module_id INT NOT NULL AFTER id,
+    ADD COLUMN payload LONGTEXT NULL AFTER level;
+
+-- 2. Backfill: los permisos directos a módulo copian su destino
+UPDATE gac_permission
+SET module_id = to_entity_id
+WHERE to_entity_type = '1';
+
+-- 3. Los permisos por categoría se expanden a cada módulo de esa categoría
+INSERT INTO gac_permission (module_id, from_entity_type, from_entity_id, scope_path, feature, level, is_disabled, deleted_at)
+SELECT m.id, p.from_entity_type, p.from_entity_id, p.scope_path, p.feature, p.level, p.is_disabled, p.deleted_at
+FROM gac_permission p
+JOIN gac_module m ON m.module_category_id = p.to_entity_id
+WHERE p.to_entity_type = '0' AND p.deleted_at IS NULL;
+
+-- 4. Eliminar columnas viejas y renombrar (después de validar)
+ALTER TABLE gac_permission
+    DROP COLUMN to_entity_type,
+    DROP COLUMN to_entity_id,
+    CHANGE COLUMN from_entity_type entity_type ENUM('0','1','2') NOT NULL,
+    CHANGE COLUMN from_entity_id entity_id INT NOT NULL;
+
+-- 5. Índice único + FK (MySQL)
+ALTER TABLE gac_permission
+    ADD UNIQUE KEY uk_perm (entity_type, entity_id, module_id, scope_path),
+    ADD KEY idx_perm_module (module_id),
+    ADD CONSTRAINT fk_gac_permission_module FOREIGN KEY (module_id) REFERENCES gac_module(id);
+```
+
+> ⚠️ Los grants por categoría no son 1:1: cada fila de categoría se convierte en
+> una fila por módulo. Verifique los `feature` resultantes antes de eliminar las
+> columnas viejas.
+
+---
+
 ## Errores comunes
 
 | Error | Causa | Solución |
 |-------|-------|----------|
 | `$p->get('users')` devuelve `null` | El usuario/rol no tiene permiso para ese módulo | Verifique los INSERTs en `gac_permission` |
 | `hasFeature('read')` devuelve `false` cuando `feature=3` | `feature=3` = crear+leer. El bit de lectura (1) sí está | Revise que no esté llamando `hasFeature` con mayúsculas. Use **minúsculas** |
-| Un módulo nuevo no aparece para el admin | Fue creado después de que el admin heredó por categoría | El admin hereda **automáticamente** si el módulo está en la categoría correcta. Si no aparece, revise `module_category_id` |
+| Un módulo nuevo no aparece para el admin | Los permisos ahora son por módulo, no por categoría | Otorgue el permiso explícitamente al rol (`module_id` del módulo nuevo) |
 | Se insertó un permiso nuevo pero el usuario sigue sin tenerlo | El caché aún no expiró | Llame a `purgeCacheBy('user', [id])` o `purgeCacheBy('role', [id])` para forzar la recarga. Mientras no purgue, el usuario verá los permisos anteriores |
 | Scope `'empresaX'` no cubre `'empresaX/Sucursal'` | Sin `/*` no hereda | Use `'empresaX/*'` |
 | Dos permisos compiten y gana el que no esperaba | La prioridad personal (`-1`) siempre gana sobre el rol | Si desea que el rol defina el permiso, no cree un permiso personal que solape |

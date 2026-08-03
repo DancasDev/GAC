@@ -112,3 +112,20 @@ test('Permission getFeature', function () {
     assert((new \DancasDev\GAC\Permissions\Permission(['f' => 0]))->getFeature() === null);
     assert((new \DancasDev\GAC\Permissions\Permission([]))->getFeature() === null);
 });
+
+test('Permission getPayload sin payload = null', function () {
+    assert((new \DancasDev\GAC\Permissions\Permission(['f' => 1]))->getPayload() === null);
+});
+
+test('Permission getPayload devuelve array', function () {
+    $p = new \DancasDev\GAC\Permissions\Permission(['f' => 1, 'p' => ['locker_ids' => [1, 2, 3]]]);
+    assert($p->getPayload() === ['locker_ids' => [1, 2, 3]]);
+});
+
+test('payload de DB llega al Permission', function () use ($gac) {
+    $p = $gac->getPermissions();
+    $roles = $p->get('roles');
+    assert($roles !== null);
+    assert($roles->getPayload() === ['locker_ids' => [1, 2, 3]]);
+    assert($p->get('users')->getPayload() === null);
+});

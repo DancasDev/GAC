@@ -8,7 +8,8 @@ class Permission {
     protected $level;
     protected $module_code;
     protected $module_is_developing;
-    
+    protected $payload;
+
     protected $featureKeys = ['create' => 1, 'read' => 2, 'update' => 4, 'delete' => 8, 'trash' => 16, 'dev' => 32];
 
     public function __construct(array $data) {
@@ -17,6 +18,7 @@ class Permission {
         $this->level = $data['l'] ?? null;
         $this->module_code = $data['m'] ?? null;
         $this->module_is_developing = $data['d'] ?? null;
+        $this->payload = $data['p'] ?? null;
     }
     
     public function getId() : ?int {
@@ -33,6 +35,15 @@ class Permission {
 
     public function getLevel() : ?int {
         return $this->level;
+    }
+
+    /**
+     * Datos extra del permiso (columna `payload`, JSON).
+     *
+     * @return array|null Array decodificado del payload, NULL si no tiene
+     */
+    public function getPayload() : ?array {
+        return $this->payload;
     }
 
     /**

@@ -144,20 +144,22 @@ class Schema {
             'gac_permission' => [
                 'columns' => [
                     'id'               => $b('serial'),
-                    'from_entity_type' => ['type' => 'enum', 'vals' => ['0', '1', '2'], 'notnull' => true, 'comment' => '0=Rol, 1=Usuario, 2=Cliente'],
-                    'from_entity_id'   => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad que posee el permiso'],
-                    'to_entity_type'   => ['type' => 'enum', 'vals' => ['0', '1'], 'notnull' => true, 'comment' => '0=Categoria, 1=Modulo'],
-                    'to_entity_id'     => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad destino del permiso'],
+                    'module_id'        => $b('int') + ['notnull' => true, 'comment' => 'Modulo al que se otorga el permiso'],
+                    'entity_type'      => ['type' => 'enum', 'vals' => ['0', '1', '2'], 'notnull' => true, 'comment' => '0=Rol, 1=Usuario, 2=Cliente'],
+                    'entity_id'        => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad que posee el permiso'],
                     'scope_path'       => $b('varchar', 255) + ['notnull' => true, 'default' => '*', 'comment' => 'Ruta jerarquica de alcance: * (global), empresaX, empresaX/SucursalA'],
                     'feature'          => $b('smallint', 5) + ['notnull' => true, 'default' => '0', 'comment' => 'Bitmask: 1=Crear, 2=Leer, 4=Actualizar, 8=Eliminar, 16=Papelera, 32=Modo desarrollo'],
                     'level'            => ['type' => 'enum', 'vals' => ['0', '1', '2'], 'notnull' => true, 'default' => '1', 'comment' => '0=Bajo, 1=Normal, 2=Alto'],
+                    'payload'          => ['type' => 'longtext', 'comment' => 'Datos extra del permiso en JSON (p. ej. locker_ids permitidos)'],
                     'is_disabled'      => $en(['0', '1']) + ['comment' => '0=No, 1=Si'],
                 ],
-                'unique' => [['from_entity_type', 'from_entity_id', 'to_entity_type', 'to_entity_id', 'scope_path']],
+                'unique' => [['entity_type', 'entity_id', 'module_id', 'scope_path']],
                 'index'  => [
-                    ['from_entity_type', 'from_entity_id'],
-                    ['from_entity_type', 'from_entity_id', 'scope_path'],
+                    ['entity_type', 'entity_id'],
+                    ['entity_type', 'entity_id', 'scope_path'],
+                    ['module_id'],
                 ],
+                'fk' => [['module_id', 'gac_module', 'id']],
             ],
             'gac_restriction' => [
                 'columns' => [

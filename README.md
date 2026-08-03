@@ -45,18 +45,17 @@ INSERT INTO gac_role (id) VALUES (1), (2);
 ### Paso 3 — Asignar permisos al rol `admin`
 
 ```sql
--- admin tiene acceso total (63) a la categoría "sistema" en todas las sucursales
+-- admin tiene acceso total (63) al módulo "users" en todas las sucursales
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('0', 1, '0', 1, '*', 63, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '0', 1, '*', 63, '1');
 ```
 
 | Tipo | Valor | Significado |
 |------|-------|-------------|
-| `from_entity_type` | `'0'` | El permiso viene de un **rol** |
-| `from_entity_id` | `1` | ID del rol `admin` |
-| `to_entity_type` | `'0'` | Aplica a una **categoría** de módulos |
-| `to_entity_id` | `1` | ID de la categoría `sistema` |
+| `module_id` | `1` | FK al módulo `users` |
+| `entity_type` | `'0'` | El permiso viene de un **rol** |
+| `entity_id` | `1` | ID del rol `admin` |
 | `scope_path` | `'*'` | En todas las sucursales |
 | `feature` | `63` | Bitmask completo: `1+2+4+8+16+32` |
 | `level` | `'1'` | Nivel normal |
@@ -66,14 +65,14 @@ VALUES ('0', 1, '0', 1, '*', 63, '1');
 ```sql
 -- El usuario 5 puede crear y leer (1+2=3) users, solo en SucursalNorte
 INSERT INTO gac_permission
-    (from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level)
-VALUES ('1', 5, '1', 1, 'SucursalNorte', 3, '1');
+    (module_id, entity_type, entity_id, scope_path, feature, level)
+VALUES (1, '1', 5, 'SucursalNorte', 3, '1');
 ```
 
 | Tipo | Valor | Significado |
 |------|-------|-------------|
-| `from_entity_type` | `'1'` | El permiso viene de un **usuario** |
-| `to_entity_type` | `'1'` | Aplica a un **módulo** directo |
+| `module_id` | `1` | FK al módulo `users` |
+| `entity_type` | `'1'` | El permiso viene de un **usuario** |
 | `feature` | `3` | Crear + Leer |
 
 ### Paso 5 — Restricción horaria global

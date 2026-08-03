@@ -295,37 +295,31 @@ class GAC {
      *
      * 1. QUERY: Trae todos los registros de gac_permission para la entidad
      *    (permisos directos del usuario/cliente + permisos heredados de roles).
-     *    ORDER BY from_entity_type DESC  → primero personales (type=1/2), luego roles (type=0).
+     *    ORDER BY entity_type DESC  → primero personales (type=1/2), luego roles (type=0).
      *
-     * 2. CLASIFICACIÓN: Separa los registros según to_entity_type:
-     *    - to_entity_type='0' (Categoría): se guarda category_id para expandir después
-     *    - to_entity_type='1' (Módulo directo): se guarda module_id
+     * 2. PRIORIDAD: Asigna prioridad numérica a cada registro:
+     *    - Personal (entity_type != '0') → priority = -1 (máxima)
+     *    - Rol      (entity_type = '0')  → priority = del rol en gac_role_entity
      *
-     * 3. PRIORIDAD: Asigna prioridad numérica a cada registro:
-     *    - Personal (from_entity_type != '0') → priority = -1 (máxima)
-     *    - Rol      (from_entity_type = '0')  → priority = del rol en gac_role_entity
+     * 3. QUERY MÓDULOS: Trae datos de gac_module (unidos a su categoría solo
+     *    para descartar módulos/categorías deshabilitados) de los módulos referidos.
      *
-     * 4. QUERY MÓDULOS: Trae datos de gac_module + gac_module_category para
-     *    resolver qué módulos pertenecen a cada categoría y viceversa.
-     *
-     * 5. ORDENAMIENTO: Ordena los permisos por prioridad ascendente.
+     * 4. ORDENAMIENTO: Ordena los permisos por prioridad ascendente.
      *    Así los permisos personales (-1) quedan antes que los de roles (0..N).
      *
-     * 6. EXPANSIÓN + DEDUP: Itera los permisos en orden de prioridad:
-     *    - Si el permiso es sobre una CATEGORÍA, lo expande a TODOS los módulos
-     *      que pertenecen a esa categoría.
-     *    - Si el permiso es sobre un MÓDULO, aplica solo a ese módulo.
-     *    - Dedup por (module_code, scope_path): el primer permiso encontrado
-     *      (mayor prioridad) para cada combinación es el que gana.
-     *      Ej: si personal tiene users con scope="*" y rol también,
-     *          el personal gana por tener priority=-1.
+     * 5. DEDUP: Cada permiso aplica directamente al módulo que referencia (module_id).
+     *    Dedup por (module_code, scope_path): el primer permiso encontrado
+     *    (mayor prioridad) para cada combinación es el que gana.
+     *    Ej: si personal tiene users con scope="*" y rol también,
+     *        el personal gana por tener priority=-1.
      *
-     * RESULTADO: array[module_code][] = {s, i, d, f, l}
+     * RESULTADO: array[module_code][] = {s, i, d, f, l, p}
      *   - s: scope_path del permiso
      *   - i: id del permiso en gac_permission
      *   - d: is_developing del módulo
      *   - f: feature (bitmask)
      *   - l: level
+     *   - p: payload decodificado (JSON), null si no tiene
      */
     protected function getPermissionsFromDB(): array {
         $response = [];
@@ -337,13 +331,13 @@ class GAC {
         $roleData = $this->getEntityRoleData();
         $c = $this->connection;
 
-        $query = 'SELECT id, from_entity_type, from_entity_id, to_entity_type, to_entity_id, scope_path, feature, level';
-        $query .= ' FROM gac_permission WHERE ((from_entity_type = ' . $c->param() . ' AND from_entity_id = ' . $c->param() . ')';
+        $query = 'SELECT id, entity_type, entity_id, module_id, scope_path, feature, level, payload';
+        $query .= ' FROM gac_permission WHERE ((entity_type = ' . $c->param() . ' AND entity_id = ' . $c->param() . ')';
         foreach ($roleData['list'] as $id) {
-            $query .= ' OR (from_entity_type = \'0\' AND from_entity_id = ' . $c->param() . ')';
+            $query .= ' OR (entity_type = \'0\' AND entity_id = ' . $c->param() . ')';
         }
         $query .= ') AND deleted_at IS NULL AND is_disabled = \'0\'';
-        $query .= ' ORDER BY from_entity_type DESC';
+        $query .= ' ORDER BY entity_type DESC';
         $stmt = $c->prepare($query);
         $stmt->execute(array_merge([$this->entityType, $this->entityId], $roleData['list']));
         $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
@@ -352,49 +346,35 @@ class GAC {
             return $response;
         }
 
-        $categoryIds = [];
         $moduleIds = [];
         $permissions = [];
         foreach ($result as $key => $record) {
-            if ($record['to_entity_type'] == '0') {
-                $categoryIds[$record['to_entity_id']] = $record['to_entity_id'];
-            } else {
-                $moduleIds[$record['to_entity_id']] = $record['to_entity_id'];
-            }
+            $moduleIds[$record['module_id']] = $record['module_id'];
 
             $record['feature'] = (int) ($record['feature'] ?? 0);
             $record['level'] = (int) $record['level'];
-            if ($record['from_entity_type'] !== '0') {
+            $record['payload'] = $this->decodePayload($record['payload'] ?? null);
+            if ($record['entity_type'] !== '0') {
                 $record['priority'] = -1;
             } else {
-                $record['priority'] = $roleData['priority'][$record['from_entity_id']] ?? 100;
+                $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100;
             }
 
             $permissions[$key] = $record;
         }
 
-        $modulesBy = ['category' => [], 'module' => []];
-        $hasModules = !empty($moduleIds);
-        $hasCategories = !empty($categoryIds);
-        if ($hasModules || $hasCategories) {
-            $query = 'SELECT a.id, a.module_category_id, a.code, a.is_developing FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id';
-            $query .= ' WHERE (';
-            if ($hasCategories && $hasModules) {
-                $query .= 'a.module_category_id IN (' . implode(',', $categoryIds) . ') OR a.id IN (' . implode(',', $moduleIds) . ')';
-            } elseif ($hasCategories) {
-                $query .= 'a.module_category_id IN (' . implode(',', $categoryIds) . ')';
-            } elseif ($hasModules) {
-                $query .= 'a.id IN (' . implode(',', $moduleIds) . ')';
-            }
-            $query .= ') AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
+        $modulesBy = [];
+        if (!empty($moduleIds)) {
+            $query = 'SELECT a.id, a.code, a.is_developing FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id';
+            $query .= ' WHERE a.id IN (' . implode(',', $moduleIds) . ')';
+            $query .= ' AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
 
             $stmt = $this->connection->prepare($query);
             $stmt->execute();
             $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
             foreach ($result as $record) {
-                $modulesBy['category'][$record['module_category_id']][$record['id']] = $record['id'];
-                $modulesBy['module'][$record['id']] = $record;
+                $modulesBy[$record['id']] = $record;
             }
         }
 
@@ -404,38 +384,36 @@ class GAC {
             });
         }
 
-        // Expand to modules and dedup by (module_code, scope_path)
+        // Dedup por (module_code, scope_path)
         $dedupMap = [];
         foreach ($permissions as $permission) {
-            $moduleResult = [];
-            if ($permission['to_entity_type'] === '0') {
-                $moduleResult = $modulesBy['category'][$permission['to_entity_id']] ?? [];
-            } elseif ($permission['to_entity_type'] === '1') {
-                $moduleResult[] = $permission['to_entity_id'];
-            }
+            $moduleData = $modulesBy[$permission['module_id']] ?? null;
+            if ($moduleData === null) continue;
 
-            foreach ($moduleResult as $moduleId) {
-                $moduleData = $modulesBy['module'][$moduleId] ?? null;
-                if ($moduleData === null) continue;
+            $code = $moduleData['code'];
+            $scope = $permission['scope_path'] ?? '*';
+            $dupKey = $code . '|' . $scope;
 
-                $code = $moduleData['code'];
-                $scope = $permission['scope_path'] ?? '*';
-                $dupKey = $code . '|' . $scope;
-
-                if (!isset($dedupMap[$dupKey])) {
-                    $dedupMap[$dupKey] = true;
-                    $response[$code][] = [
-                        's' => $scope,
-                        'i' => $permission['id'],
-                        'd' => $moduleData['is_developing'],
-                        'f' => $permission['feature'],
-                        'l' => $permission['level']
-                    ];
-                }
+            if (!isset($dedupMap[$dupKey])) {
+                $dedupMap[$dupKey] = true;
+                $response[$code][] = [
+                    's' => $scope,
+                    'i' => $permission['id'],
+                    'd' => $moduleData['is_developing'],
+                    'f' => $permission['feature'],
+                    'l' => $permission['level'],
+                    'p' => $permission['payload']
+                ];
             }
         }
 
         return $response;
+    }
+
+    protected function decodePayload(?string $json): ?array {
+        if ($json === null || $json === '') return null;
+        $decoded = json_decode($json, true);
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**
