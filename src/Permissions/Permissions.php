@@ -62,6 +62,6 @@ class Permissions {
             throw new \Exception('The permission data for module "'. $moduleCode . '" is invalid.', 1);
         }
 
-        return array_merge($this ->list[$moduleCode], ['module_code' => $moduleCode]);
+        return array_merge($this ->list[$moduleCode], ['m' => $moduleCode]);
     }
 }

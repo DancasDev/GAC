@@ -4,531 +4,657 @@ namespace DancasDev\GAC;
 
 use DancasDev\GAC\Permissions\Permissions;
 use DancasDev\GAC\Restrictions\Restrictions;
-use DancasDev\GAC\Adapters\DatabaseAdapter;
-use DancasDev\GAC\Adapters\CacheAdapter;
-use DancasDev\GAC\Exceptions\DatabaseAdapterException;
-use DancasDev\GAC\Exceptions\CacheAdapterException;
+use DancasDev\GAC\Drivers\Cache\CacheInterface;
+use DancasDev\GAC\Drivers\Database\ConnectionInterface;
+use DancasDev\GAC\Drivers\Database\StatementInterface;
+use DancasDev\GAC\Drivers\Database\PdoConnection;
 use PDO;
 
 class GAC {
-    public $databaseAdapter;
-    public $cacheAdapter;
+    public ?CacheInterface $cacheAdapter = null;
 
+    protected ConnectionInterface $connection;
     protected array $entityTypeKeys = ['user' => '1', 'client' => '2'];
-    protected array $entityRoleData = []; // ['list' => [], 'priority' => []]
+    protected array $entityRoleData = [];
     protected $entityType;
     protected $entityId;
+    protected $scopePath = '*';
 
     protected $cacheTtl;
     protected $cachekey;
 
-    public function setEntity(string $entityType, string|int $entityId) : GAC {
-        $this ->entityType = (string) ($this ->entityTypeKeys[$entityType] ?? $entityType);
-        $this ->entityId = $entityId;
-        return $this;
-    }
+    protected array $entityCache = [];
+    protected bool $entityLoaded = false;
+    protected array $globalRestrictions = [];
+    protected bool $globalLoaded = false;
 
-    public function setCacheTtl(int $ttl) : GAC {
-        $this ->cacheTtl = $ttl;
-        return $this;
-    }
-
-    public function setCacheKey(string $prefix) : GAC {
-        $this ->cachekey = $prefix;
-        return $this;
-    }
-
-    public function getEntityType() : string {
-        return $this ->entityType;
-    }
-
-    public function getEntityId() : string|int {
-        return $this ->entityId;
-    }
-
-    public function getCacheKey(string $type) : string {
-        if ($type == 'restrictions_global') {
-            return $this ->cachekey . '_r_global';
+    public function __construct(ConnectionInterface|PDO $connection, CacheInterface|array|null $cache = null) {
+        if ($connection instanceof PDO) {
+            $connection = new PdoConnection($connection);
         }
-        else {
-            $type = substr($type, 0, 1);
-            return $this ->cachekey . '_' . $type . '_' . $this ->entityType . '_' . $this ->entityId;
+        $this->connection = $connection;
+        $this->cachekey = 'gac';
+        $this->cacheTtl = 1800;
+
+        if ($cache instanceof CacheInterface) {
+            $this->cacheAdapter = $cache;
+        } elseif (is_array($cache)) {
+            $dir = $cache['dir'] ?? __DIR__ . '/writable';
+            $this->cacheAdapter = new \DancasDev\GAC\Drivers\Cache\FileCache($dir);
+            $this->cachekey = $cache['prefix'] ?? 'gac';
+            $this->cacheTtl = (int) ($cache['ttl'] ?? 1800);
         }
     }
 
-    public function getEntityRoleData(bool $reset = false) {
-        if ($reset || empty($this ->entityRoleData)) {
-            $data = ['list' => [], 'priority' => []];
-            $result = $this ->databaseAdapter ->getRoles($this ->entityType, $this ->entityId);
-            foreach ($result as $key => $role) {
-                $data['priority'][$role['id']] = (int) $role['priority'];
-                $data['list'][] = $role['id'];
-            }
+    public function setEntity(string $entityType, string|int $entityId): GAC {
+        $this->entityType = (string) ($this->entityTypeKeys[$entityType] ?? $entityType);
+        $this->entityId = $entityId;
+        $this->entityRoleData = [];
+        $this->entityCache = [];
+        $this->entityLoaded = false;
+        return $this;
+    }
 
-            $this ->entityRoleData = $data;
-        }
-        
-        return $this ->entityRoleData;
+    public function setScope(string $scopePath): GAC {
+        $this->scopePath = $scopePath;
+        return $this;
+    }
+
+    public function setCacheTtl(int $ttl): GAC {
+        $this->cacheTtl = $ttl;
+        return $this;
+    }
+
+    public function setCacheKey(string $prefix): GAC {
+        $this->cachekey = $prefix;
+        return $this;
+    }
+
+    public function getEntityType(): string {
+        return $this->entityType;
+    }
+
+    public function getEntityId(): string|int {
+        return $this->entityId;
+    }
+
+    public function getCacheKey(): string {
+        return $this->cachekey . '_' . $this->entityType . '_' . $this->entityId;
+    }
+
+    public function getGlobalCacheKey(): string {
+        return $this->cachekey . '_global';
     }
 
     /**
-     * Establecer conexión a la base de datos
-     * 
-     * @param PDO|array $params - Parámetros de conexión a la base de datos
-     * 
-     * @throws DatabaseAdapterException
-     * 
-     * @return GAC
+     * Obtiene los permisos del usuario/cliente para el scope actual.
+     * Resuelve scope, prioridad y granularidad módulo por módulo.
      */
-    public function setDatabase($params) : GAC {
-        if (is_array($params) || $params instanceof PDO) {
-            $this ->databaseAdapter = new DatabaseAdapter($params);
-        }
-        elseif (is_object($params)) {
-            if (!in_array('DancasDev\\GAC\\Adapters\\DatabaseAdapterInterface', class_implements($params))) {
-                throw new DatabaseAdapterException('Invalid implementation: The database adapter must implement DatabaseAdapterInterface.', 1);
+    public function getPermissions(bool $fromCache = true): Permissions {
+        $this->ensureLoaded($fromCache);
+
+        $result = [];
+        foreach (($this->entityCache['p'] ?? []) as $module => $records) {
+            $best = $this->resolveScope($records);
+            if ($best !== null) {
+                unset($best['s']);
+                $result[$module] = $best;
             }
-
-            $this ->databaseAdapter = $params;
-        }
-        else {
-            throw new DatabaseAdapterException('Need to provide database adapter.', 1);
         }
 
-        return $this;
-    }
-    
-    /**
-     * Establecer cache
-     * 
-     * @param string|null $key (opcional) - Prefijo para la cache
-     * @param string|int|null $ttl - (opcional) Tiempo de vida de la cache (en segundos)
-     * @param string|object $dir - (opcional) Directorio donde se almacenará la cache o adaptador de cache
-     * 
-     * @throws CacheAdapterException
-     * 
-     * @return GAC
-     */
-    public function setCache(string|null $key = null, string|int|null $ttl = null, string|object $dir = null) : GAC {
-        $this ->cachekey = $key ?? 'gac';
-        $this ->cacheTtl = (int) ($ttl ?? 1800); // 30 minutos por defecto
-        $dir ??= __DIR__ . '/writable';
-
-        if(is_string($dir)) {
-            $this ->cacheAdapter = new CacheAdapter($dir);
-        }
-        else {
-            $classImplementList = class_implements($dir);
-            if (!in_array('DancasDev\\GAC\\Adapters\\CacheAdapterInterface', $classImplementList)) {
-                throw new CacheAdapterException('Invalid implementation: The cache adapter must implement CacheAdapterInterface.', 1);
-            }
-            
-            $this ->cacheAdapter = $dir;
-        }
-
-        return $this;
+        return new Permissions($result);
     }
 
     /**
-     * Obtener permisos a modulos
-     * 
-     * @param bool $fromCache - (Opcional) Indica si se obtienen los permisos desde la caché
-     * 
-     * @return Permissions
+     * Obtiene las restricciones del usuario/cliente + globales.
+     * Primero resuelve scope para restricciones de entidad,
+     * luego agrega globales solo para tipos no definidos.
      */
-    public function getPermissions(bool $fromCache = true) : Permissions {
-        $type = 'permissions';
-        if (empty($this ->entityType) || empty($this ->entityId)) {
+    public function getRestrictions(bool $fromCache = true): Restrictions {
+        if (empty($this->entityType) || empty($this->entityId)) {
             throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
 
-        $permissions = null;
-        if ($fromCache) {
-            $permissions = $this ->getFromCache($type);
+        $this->ensureLoaded($fromCache);
+        $this->ensureGlobalRestrictions($fromCache);
+
+        $data = [];
+        foreach (($this->entityCache['r'] ?? []) as $type => $records) {
+            $best = $this->resolveScope($records);
+            if ($best !== null) {
+                $data[$type] = [$best];
+            }
         }
 
-        if (!is_array($permissions)) {
-            $permissions = $this ->getPermissionsFromDB();
-            $this ->saveToCache($type, $permissions);
+        // Globales: resuelven scope y solo aplican si la entidad no definió reglas para ese tipo
+        foreach ($this->globalRestrictions as $type => $rules) {
+            if (!isset($data[$type])) {
+                $best = $this->resolveScope($rules);
+                if ($best !== null) {
+                    $data[$type] = [$best];
+                }
+            }
         }
 
-        return new Permissions($permissions);
+        return new Restrictions($data);
     }
 
+    public function getPermissionList(?string $scope = null, bool $fromCache = true): array {
+        $this->ensureLoaded($fromCache);
+        $records = $this->entityCache['p'] ?? [];
+        if ($scope === null) return $records;
+
+        $result = [];
+        foreach ($records as $module => $moduleRecords) {
+            $best = $this->resolveScope($moduleRecords, $scope);
+            if ($best !== null) {
+                $result[$module] = $best;
+            }
+        }
+        return $result;
+    }
+
+    public function getRestrictionList(?string $scope = null, bool $fromCache = true): array {
+        $this->ensureLoaded($fromCache);
+        $this->ensureGlobalRestrictions($fromCache);
+        $records = $this->entityCache['r'] ?? [];
+
+        if ($scope === null) {
+            $data = $records;
+            foreach ($this->globalRestrictions as $type => $rules) {
+                if (!isset($data[$type])) $data[$type] = $rules;
+            }
+            return $data;
+        }
+
+        $data = [];
+        foreach ($records as $type => $typeRecords) {
+            $best = $this->resolveScope($typeRecords, $scope);
+            if ($best !== null) $data[$type] = [$best];
+        }
+        foreach ($this->globalRestrictions as $type => $rules) {
+            if (!isset($data[$type])) {
+                $best = $this->resolveScope($rules, $scope);
+                if ($best !== null) $data[$type] = [$best];
+            }
+        }
+        return $data;
+    }
+
+    // ─── Cache ────────────────────────────────────────
+
     /**
-     * Obtener restricciones del usuario
-     * 
-     * @param bool $fromCache - (Opcional) Indica si se obtienen las restricciones desde la caché
-     * 
-     * @return Restrictions
+     * Carga perezosa de permisos + restricciones de entidad.
+     * Intenta cache primero, si falla ejecuta consultas y persiste.
      */
-    public function getRestrictions(bool $fromCache = true) : Restrictions {
-        if (empty($this ->entityType) || empty($this ->entityId)) {
+    protected function ensureLoaded(bool $fromCache): void {
+        if ($this->entityLoaded) return;
+        if (empty($this->entityType) || empty($this->entityId)) {
             throw new \Exception('Entity type and ID must be set before loading data.', 1);
         }
 
-        // Cache
-        $restrictionsP = null;
-        $restrictionsG = null;
-        if ($fromCache) {
-            $restrictionsG = $this ->getFromCache('restrictions_global');
-            $restrictionsP = $this ->getFromCache('restrictions');
+        if ($fromCache && $this->cacheAdapter) {
+            $cached = $this->cacheAdapter->get($this->getCacheKey());
+            if (is_array($cached) && isset($cached['p'])) {
+                $this->entityCache = $cached;
+                $this->entityLoaded = true;
+                return;
+            }
         }
 
-        // Base de datos
-        if (!is_array($restrictionsG)) {
-            $restrictionsG = $this ->getRestrictionsFromDB(true);
-            $this ->saveToCache('restrictions_global', $restrictionsG);
-        }
-        if (!is_array($restrictionsP)) {
-            $restrictionsP = $this ->getRestrictionsFromDB(false);
-            $this ->saveToCache('restrictions', $restrictionsP);
-        }
+        $this->entityCache['p'] = $this->getPermissionsFromDB();
+        $this->entityCache['r'] = $this->getEntityRestrictionsFromDB();
+        $this->entityLoaded = true;
 
-        // Formatear
-        $restrictions = array_merge_recursive($restrictionsG, $restrictionsP);
-        return new Restrictions($restrictions);
+        if ($this->cacheAdapter) {
+            $this->cacheAdapter->save($this->getCacheKey(), $this->entityCache, $this->cacheTtl);
+        }
     }
 
     /**
-     * Limpiar cache 
-     * 
-     * @param bool $includeGlobal - Indica si se eliminan también las restricciones globales
-     * 
-     * @throws CacheAdapterException
-     * 
-     * @return bool TRUE en caso de éxito, FALSE en caso de fallo.
+     * Carga perezosa de restricciones globales (entity_type='3').
+     * Cache separado para no invalidar todas las entidades al cambiar globales.
      */
-    public function clearCache(bool $includeGlobal = false) : bool {
-        if (empty($this ->cacheAdapter)) {
-            throw new CacheAdapterException('Cache adapter not set.', 1);
+    protected function ensureGlobalRestrictions(bool $fromCache): void {
+        if ($this->globalLoaded) return;
+
+        if ($fromCache && $this->cacheAdapter) {
+            $cached = $this->cacheAdapter->get($this->getGlobalCacheKey());
+            if (is_array($cached)) {
+                $this->globalRestrictions = $cached;
+                $this->globalLoaded = true;
+                return;
+            }
         }
 
-        # Permisos
-        $cacheKey = $this ->getCacheKey('permissions');
-        $this ->cacheAdapter ->delete($cacheKey);
+        $this->globalRestrictions = $this->getGlobalRestrictionsFromDB();
+        $this->globalLoaded = true;
 
-        # Restricciones
-        $cacheKey = $this ->getCacheKey('restrictions');
-        $this ->cacheAdapter ->delete($cacheKey);
+        if ($this->cacheAdapter) {
+            $this->cacheAdapter->save($this->getGlobalCacheKey(), $this->globalRestrictions, $this->cacheTtl);
+        }
+    }
 
-        // globales
+    public function clearCache(bool $includeGlobal = false): bool {
+        if (empty($this->cacheAdapter)) {
+            return false;
+        }
+
+        $this->cacheAdapter->delete($this->getCacheKey());
+
         if ($includeGlobal) {
-            $cacheKey = $this ->getCacheKey('restrictions_global');
-            $this ->cacheAdapter ->delete($cacheKey);
-        }       
+            $this->cacheAdapter->delete($this->getGlobalCacheKey());
+        }
 
         return true;
     }
-    
-    /**
-     * Purga los permisos almacenados en caché según ciertos criterios.
-     * 
-     * @param string $entityType - Entidad (user, client, role, global).
-     * @param array $entityIds - IDs de las entidades.
-     * 
-     * @return bool
-     */
-    public function purgePermissionsBy(string $entityType, array $entityIds = []) : bool {
-        return $this ->purgeCacheBy('permissions', $entityType, $entityIds);
-    }
-    
-    /**
-     * Purga las restricciones almacenadas en caché según ciertos criterios.
-     * 
-     * @param string $entityType - Entidad (user, client, role, global).
-     * @param array $entityIds - IDs de las entidades.
-     * 
-     * @return bool
-     */
-    public function purgeRestrictionsBy(string $entityType, array $entityIds = []) : bool {
-        return $this ->purgeCacheBy('restrictions', $entityType, $entityIds);
-    }
 
-    /**
-     * Purga los datos almacenados en caché según ciertos criterios.
-     * 
-     * @param string $type - Tipo de datos (permissions, restrictions).
-     * @param string $entityType - Entidad (user, client, role, global).
-     * @param array $entityIds - IDs de las entidades.
-     * 
-     * @return bool
-     */
-    protected function purgeCacheBy(string $type, string $entityType, array $entityIds = []) : bool {
-        if (empty($this ->cacheAdapter)) {
-            throw new CacheAdapterException('Cache adapter not set.', 1);
+    // ponytail: unified cache purge — perms + restrictions share one cache key
+    public function purgeCacheBy(string $entityType, array $entityIds = []): bool {
+        if (empty($this->cacheAdapter)) {
+            return false;
         }
 
-        $type = substr($type, 0, 1);
-        if ($entityType == 'global') {
-            $this ->cacheAdapter ->deleteMatching($this ->cachekey . '_' . $type . '_*');
+        if ($entityType === 'global') {
+            $this->cacheAdapter->delete($this->getGlobalCacheKey());
+            return true;
         }
-        else {
-            if (empty($entityIds)) {
-                return false;
-            }
 
-            # Obtener lista de la entidades a purgar
-            $list = []; // (user/client -> IDs)
-            if ($entityType == 'user') {
-                $list['1'] = $entityIds;
+        if (empty($entityIds)) {
+            return false;
+        }
+
+        $list = [];
+        if ($entityType === 'user') {
+            $list['1'] = $entityIds;
+        } elseif ($entityType === 'client') {
+            $list['2'] = $entityIds;
+        } elseif ($entityType === 'role') {
+            $result = $this->getEntitiesByRoleIds($entityIds);
+            foreach ($result as $record) {
+                $list[$record['entity_type']] ??= [];
+                $list[$record['entity_type']][$record['entity_id']] = $record['entity_id'];
             }
-            elseif ($entityType == 'client') {
-                $list['2'] = $entityIds;
-            }
-            elseif($entityType == 'role') {
-                $result = $this ->databaseAdapter ->getEntitiesByRoles($entityIds);
-                foreach ($result as $record) {
-                    $list[$record['entity_type']] ??= [];
-                    $list[$record['entity_type']][$record['entity_id']] = $record['entity_id'];
-                }
-            }
-            
-            # Purga listas
-            foreach ($list as $entityKey => $subList) {
-                foreach ($subList as $entityId) {
-                    $entityId = (string) $entityId;
-                    $this ->cacheAdapter ->delete($this ->cachekey . '_' . $type . '_' . $entityKey . '_' . $entityId);
-                }
+        }
+
+        foreach ($list as $entityKey => $subList) {
+            foreach ($subList as $entityId) {
+                $this->cacheAdapter->delete($this->cachekey . '_' . $entityKey . '_' . $entityId);
             }
         }
 
         return true;
     }
 
-    /**
-     * Obtener registros desde la cache
-     * 
-     * @param string $type - tipo de carga ['permissions','restrictions']
-     * 
-     * 
-     * @throws CacheAdapterException
-     * 
-     * @return array|null null en caso de que no exista nada almacenado en cache
-     */
-    protected function getFromCache(string $type) : array|null {
-        $response = null;
-        
-        if (empty($this ->cacheAdapter)) {
-            throw new CacheAdapterException('Cache adapter not set.', 1);
-        }
-        
-        $cacheKey = $this ->getCacheKey($type);
-        $data = $this ->cacheAdapter ->get($cacheKey);
-        if (is_array($data)) {
-            $response = $data;
-        }
-
-        return $response;
-    }
+    // ─── Consultas a base de datos ────────────────────────────────────────
 
     /**
-     * Almacenar registros en la cache
-     * 
-     * @param string $type - tipo de carga ['permissions','restrictions']
-     * @param array $data - Datos a almacenar
-     * 
-     * @throws CacheAdapterException
-     * 
-     * @return bool TRUE en caso de éxito, FALSE en caso de fallo. 
-     */
-    protected function saveToCache(string $type, array $data) : bool {
-        if (empty($this ->cacheAdapter)) {
-            throw new CacheAdapterException('Cache adapter not set.', 1);
-        }
-
-        $cacheKey = $this ->getCacheKey($type);
-        return $this ->cacheAdapter ->save($cacheKey, $data, $this ->cacheTtl);
-    }
-    
-    /**
-     * Consultar y depurar los permisos de una entidad (y sus roles)
+     * Obtiene y procesa los permisos desde la base de datos.
      *
-     * @return array Listado de permisos
+     * FLUJO DE LA GRANULARIDAD:
+     *
+     * 1. QUERY: Trae todos los registros de gac_permission para la entidad
+     *    (permisos directos del usuario/cliente + permisos heredados de roles).
+     *    ORDER BY entity_type DESC  → primero personales (type=1/2), luego roles (type=0).
+     *
+     * 2. PRIORIDAD: Asigna prioridad numérica a cada registro:
+     *    - Personal (entity_type != '0') → priority = -1 (máxima)
+     *    - Rol      (entity_type = '0')  → priority = del rol en gac_role_entity
+     *
+     * 3. QUERY MÓDULOS: Trae datos de gac_module (unidos a su categoría solo
+     *    para descartar módulos/categorías deshabilitados) de los módulos referidos.
+     *
+     * 4. ORDENAMIENTO: Ordena los permisos por prioridad ascendente.
+     *    Así los permisos personales (-1) quedan antes que los de roles (0..N).
+     *
+     * 5. DEDUP: Cada permiso aplica directamente al módulo que referencia (module_id).
+     *    Dedup por (module_code, scope_path): el primer permiso encontrado
+     *    (mayor prioridad) para cada combinación es el que gana.
+     *    Ej: si personal tiene users con scope="*" y rol también,
+     *        el personal gana por tener priority=-1.
+     *
+     * RESULTADO: array[module_code][] = {s, i, d, f, l, p}
+     *   - s: scope_path del permiso
+     *   - i: id del permiso en gac_permission
+     *   - d: is_developing del módulo
+     *   - f: feature (bitmask)
+     *   - l: level
+     *   - p: payload decodificado (JSON), null si no tiene
      */
-    protected function getPermissionsFromDB() : array { 
+    protected function getPermissionsFromDB(): array {
         $response = [];
 
-        if (empty($this ->databaseAdapter)) {
-            throw new DatabaseAdapterException('Database adapter not set.', 1);
+        if (empty($this->entityType) || $this->entityType === '0') {
+            return $response;
         }
 
-        # Obtener datos
-        // Roles
-        $roleData = $this ->getEntityRoleData();
-        // permisos relacionados a la entidad y los roles asignados al mismo
-        $result = $this ->databaseAdapter ->getPermissions($this ->entityType, $this ->entityId, $roleData['list']);
+        $roleData = $this->getEntityRoleData();
+        $c = $this->connection;
+
+        $query = 'SELECT id, entity_type, entity_id, module_id, scope_path, feature, level, payload';
+        $query .= ' FROM gac_permission WHERE ((entity_type = ' . $c->param() . ' AND entity_id = ' . $c->param() . ')';
+        foreach ($roleData['list'] as $id) {
+            $query .= ' OR (entity_type = \'0\' AND entity_id = ' . $c->param() . ')';
+        }
+        $query .= ') AND deleted_at IS NULL AND is_disabled = \'0\'';
+        $query .= ' ORDER BY entity_type DESC';
+        $stmt = $c->prepare($query);
+        $stmt->execute(array_merge([$this->entityType, $this->entityId], $roleData['list']));
+        $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
+
         if (!is_array($result) || empty($result)) {
             return $response;
         }
 
-        # Depurar datos
-        $categoryIds = [];
         $moduleIds = [];
         $permissions = [];
         foreach ($result as $key => $record) {
-            // Almacenar Módulo o Categoría
-            if ($record['to_entity_type'] == '0') {
-                $categoryIds[$record['to_entity_id']] = $record['to_entity_id'];
-            }
-            else {
-                $moduleIds[$record['to_entity_id']] = $record['to_entity_id'];
-            }
+            $moduleIds[$record['module_id']] = $record['module_id'];
 
-            // Formatear permiso
-            $record['feature'] = !empty($record['feature']) ? explode(',', $record['feature']) : [];
+            $record['feature'] = (int) ($record['feature'] ?? 0);
             $record['level'] = (int) $record['level'];
-            if ($record['from_entity_type'] !== '0') {
-                $record['priority'] = -1; // permisos personales primero
-            }
-            else {
-                $record['priority'] = $roleData['priority'][$record['from_entity_id']] ?? 100; // permisos heredados despues
+            $record['payload'] = $this->decodePayload($record['payload'] ?? null);
+            if ($record['entity_type'] !== '0') {
+                $record['priority'] = -1;
+            } else {
+                $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100;
             }
 
-            // Almacenar permiso
             $permissions[$key] = $record;
         }
 
-        // Datos de los modulos
-        $modulesBy = ['category' => [], 'module' => []];
-        $result = $this ->databaseAdapter ->getModulesData($categoryIds, $moduleIds);
-        foreach ($result as $record) {
-            $modulesBy['category'][$record['module_category_id']][$record['id']] = $record['id']; // solo referencial
-            $modulesBy['module'][$record['id']] = $record; // modulo con todos los datos
+        $modulesBy = [];
+        if (!empty($moduleIds)) {
+            $query = 'SELECT a.id, a.code, a.is_developing FROM gac_module AS a INNER JOIN gac_module_category AS b ON a.module_category_id = b.id';
+            $query .= ' WHERE a.id IN (' . implode(',', $moduleIds) . ')';
+            $query .= ' AND a.deleted_at IS NULL AND b.deleted_at IS NULL AND a.is_disabled = \'0\' AND b.is_disabled = \'0\'';
+
+            $stmt = $this->connection->prepare($query);
+            $stmt->execute();
+            $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
+
+            foreach ($result as $record) {
+                $modulesBy[$record['id']] = $record;
+            }
         }
 
-        
-        // ordenar permisos por prioridad 
         if (!empty($roleData['priority'])) {
             usort($permissions, function(array $a, array $b) {
                 return $a['priority'] <=> $b['priority'];
             });
         }
 
-        # Ejecutar granularidad de permisos
+        // Dedup por (module_code, scope_path)
+        $dedupMap = [];
         foreach ($permissions as $permission) {
-            $result = [];
-            // Acceso por categoría
-            if ($permission['to_entity_type'] === '0') {
-                $result = $modulesBy['category'][$permission['to_entity_id']] ?? [];
-            }
-            // Acceso por módulo
-            elseif ($permission['to_entity_type'] === '1') {
-                $result[] = $permission['to_entity_id']; 
-            }
-            
-            // Almacenar minetras...
-            foreach ($result as $moduleId) {
-                $moduleData = $modulesBy['module'][$moduleId] ?? null;
-                // sea un modulo existente
-                if ($moduleData === null) {
-                    continue;
-                }
-                // el permiso al modulo no se almaceno anteriormente (aqui es donde entra en juego el orden por medio del atribuyo "priority")
-                elseif (!array_key_exists($moduleData['code'], $response)) {
-                    $response[$moduleData['code']] = [
-                        'i' => $permission['id'],
-                        'd' => $moduleData['is_developing'],
-                        'f' => $permission['feature'],
-                        'l' => $permission['level']
-                    ];
-                }
+            $moduleData = $modulesBy[$permission['module_id']] ?? null;
+            if ($moduleData === null) continue;
+
+            $code = $moduleData['code'];
+            $scope = $permission['scope_path'] ?? '*';
+            $dupKey = $code . '|' . $scope;
+
+            if (!isset($dedupMap[$dupKey])) {
+                $dedupMap[$dupKey] = true;
+                $response[$code][] = [
+                    's' => $scope,
+                    'i' => $permission['id'],
+                    'd' => $moduleData['is_developing'],
+                    'f' => $permission['feature'],
+                    'l' => $permission['level'],
+                    'p' => $permission['payload']
+                ];
             }
         }
 
         return $response;
     }
-    
+
+    protected function decodePayload(?string $json): ?array {
+        if ($json === null || $json === '') return null;
+        $decoded = json_decode($json, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
     /**
-     * Consultar restricciones de la entidad (y sus roles) o globales
-     * 
-     * @param bool $isGlobal - Indica si se obtienen restricciones globales
-     * 
-     * @return array Listado de restricciones
+     * Obtiene y procesa las restricciones de la entidad desde la base de datos.
+     *
+     * FLUJO DE LA GRANULARIDAD:
+     *
+     * 1. QUERY: Trae todas las restricciones de la entidad (directas + heredadas de roles).
+     *    NO incluye globales (entity_type='3') — esas se cargan aparte en getGlobalRestrictionsFromDB().
+     *    ORDER BY entity_type DESC → primero personales (type=1/2), luego roles (type=0).
+     *
+     * 2. PRIORIDAD: Asigna prioridad numérica a cada registro:
+     *    - Personal (entity_type coincide con la entidad actual) → priority = -1 (máxima)
+     *    - Rol      (entity_type='0') → priority = prioridad del rol en gac_role_entity
+     *
+     * 3. ORDENAMIENTO: Ordena por prioridad ascendente.
+     *    Personales (-1) primero, luego roles por su prioridad (0..N).
+     *
+     * 4. DEDUP POR TIPO (TYPE): La primera entidad que establece una restricción
+     *    para un TYPE gana, y las siguientes entidades con el mismo TYPE se descartan.
+     *    Ej: si el usuario tiene restricción 'date' (personal, priority=-1)
+     *        y un rol también tiene 'date' (priority=0), solo la personal se conserva.
+     *    Esto permite que un usuario SOBREESCRIBA las restricciones de su rol
+     *    para un TYPE específico, sin perder los otros tipos del rol.
+     *
+     * RESULTADO: array[type][] = {s, i, r, d}
+     *   - s: scope_path
+     *   - i: id de la restricción
+     *   - r: rule (in_range, before, allow, deny, etc.)
+     *   - c: config decodificada del JSON config
      */
-    protected function getRestrictionsFromDB(bool $isGlobal = false) : array {
-        $response = [];
+    protected function getEntityRestrictionsFromDB(): array {
+        $roleData = $this->getEntityRoleData();
+        $c = $this->connection;
 
-        if (empty($this ->databaseAdapter)) {
-            throw new DatabaseAdapterException('Database adapter not set.', 1);
+        $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, config';
+        $query .= ' FROM gac_restriction';
+        $query .= ' WHERE deleted_at IS NULL AND is_disabled = \'0\'';
+        $query .= ' AND ((entity_type = ' . $c->param() . ' AND entity_id = ' . $c->param() . ')';
+        foreach ($roleData['list'] as $id) {
+            $query .= ' OR (entity_type = \'0\' AND entity_id = ' . $c->param() . ')';
         }
-        # Obtener datos
-        $entityType = '3'; // tipo de entidad global
-        $entityId = '0'; // id irrelevante
-        $roleIds = [];
-        if (!$isGlobal) {
-            $entityType = $this ->entityType;
-            $entityId = $this ->entityId;
-            $result = $this ->getEntityRoleData();
-            $roleIds = $result['list'];
-        }
+        $query .= ')';
+        $query .= ' ORDER BY entity_type DESC';
 
-        $result = $this ->databaseAdapter ->getRestrictions($entityType, $entityId, $roleIds);
+        $params = array_merge([$this->entityType, $this->entityId], $roleData['list']);
+        $stmt = $c->prepare($query);
+        $stmt->execute($params);
+        $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
+
         if (!is_array($result) || empty($result)) {
-            return $response;
+            return [];
         }
 
-        # Depurar datos
-        if (!$isGlobal) {
-            foreach ($result as $key => $record) {
-                // Asignar prioridad
-                if ($record['entity_type'] === $this ->entityType) {
-                    $record['priority'] = -1; // personales primero
-                }
-                else {
-                    $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100; // heredadas de roles despues
-                }
-
-                // Formatear y almacenar
-                $record['data'] = @json_decode($record['data'], true) ?? [];
-                $response[] = [
-                    'id' => $record['id'],
-                    'priority' => $record['priority'],
-                    'entity_type' => $record['entity_type'],
-                    'entity_id' => $record['entity_id'],
-                    'category_code' => $record['category_code'],
-                    'type_code' => $record['type_code'],
-                    'data' => $record['data']
-                ];
-            }
-            
-            // ordenar por prioridad 
-            if (!empty($roleData['priority'])) {
-                usort($response, function(array $a, array $b) {
-                    return $a['priority'] <=> $b['priority'];
-                });
+        // Asignar prioridad
+        $records = [];
+        $entityTypeKey = (string) $this->entityType;
+        foreach ($result as $record) {
+            if ($record['entity_type'] === $entityTypeKey) {
+                $priority = -1;
+            } else {
+                $priority = $roleData['priority'][$record['entity_id']] ?? 100;
             }
 
-            // Descartar duplicados por granularidad
-            $result = [];
-            $reservationList  = []; // una sola reserva por categoría
-            foreach ($response as $restriction) {
-                $entityKey = $restriction['entity_type'] . '_' . $restriction['entity_id'];
-                $reservationList[$restriction['category_code']] ??= $entityKey; // asignar reserva si no existe
-                // si ya existe una reserva y no es la misma, descartar
-                if ($reservationList[$restriction['category_code']] !== $entityKey) {
-                    continue;
-                }
-
-                // Almacenar restricción
-                $result[$restriction['category_code']][$restriction['type_code']]['p'] = [
-                    'i' => $restriction['id'],
-                    'd' => $restriction['data']
-                ];
-            }
-
-            // Almacenar
-            $response = $result;
+            $records[] = [
+                'id' => $record['id'],
+                'priority' => $priority,
+                'entity_type' => $record['entity_type'],
+                'entity_id' => $record['entity_id'],
+                'scope_path' => $record['scope_path'] ?? '*',
+                'type' => $record['type'],
+                'r' => $record['rule'],
+                'config' => @json_decode($record['config'], true) ?? []
+            ];
         }
-        else {
-            foreach ($result as $key => $record) {
-                $response[$record['category_code']][$record['type_code']]['g'] = [
-                    'i' => $record['id'],
-                    'd' => (@json_decode($record['data'], true) ?? [])
-                ];
+
+        // Ordenar por prioridad
+        usort($records, function(array $a, array $b) {
+            return $a['priority'] <=> $b['priority'];
+        });
+
+        // Eliminar duplicados por tipo (la primera entidad por tipo gana)
+        $response = [];
+        $reservationList = [];
+        foreach ($records as $rec) {
+            $entityKey = $rec['entity_type'] . '_' . $rec['entity_id'];
+            $reservationList[$rec['type']] ??= $entityKey;
+            if ($reservationList[$rec['type']] !== $entityKey) {
+                continue;
             }
+
+            $response[$rec['type']][] = [
+                's' => $rec['scope_path'],
+                'i' => $rec['id'],
+                'r' => $rec['r'],
+                'c' => $rec['config']
+            ];
         }
-        
+
         return $response;
+    }
+
+    protected function getGlobalRestrictionsFromDB(): array {
+        $query = 'SELECT id, entity_type, entity_id, scope_path, type, rule, config';
+        $query .= ' FROM gac_restriction';
+        $query .= ' WHERE deleted_at IS NULL AND is_disabled = \'0\'';
+        $query .= ' AND entity_type = \'3\'';
+
+        $stmt = $this->connection->prepare($query);
+        $stmt->execute();
+        $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
+
+        if (!is_array($result) || empty($result)) {
+            return [];
+        }
+
+        $response = [];
+        foreach ($result as $record) {
+            $response[$record['type']][] = [
+                's' => $record['scope_path'] ?? '*',
+                'i' => $record['id'],
+                'r' => $record['rule'],
+                'c' => @json_decode($record['config'], true) ?? []
+            ];
+        }
+
+        return $response;
+    }
+
+    protected function getEntitiesByRoleIds(array $roleIds): array {
+        if (empty($roleIds)) {
+            return [];
+        }
+
+        $c = $this->connection;
+        $roleIds = array_map('intval', $roleIds);
+        $parts = [];
+        foreach ($roleIds as $id) {
+            $parts[] = $c->param();
+        }
+        $placeholders = implode(',', $parts);
+        $query = 'SELECT id, role_id, entity_type, entity_id FROM gac_role_entity WHERE role_id IN (' . $placeholders . ') AND is_disabled = \'0\' AND deleted_at IS NULL';
+        $stmt = $c->prepare($query);
+        $stmt->execute($roleIds);
+
+        return $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
+    }
+
+    protected function getEntityRoleData(bool $reset = false) {
+        if ($reset || empty($this->entityRoleData)) {
+            $data = ['list' => [], 'priority' => []];
+            $c = $this->connection;
+            $query = 'SELECT b.id, a.priority';
+            $query .= ' FROM gac_role_entity AS a INNER JOIN gac_role AS b ON a.role_id = b.id';
+            $query .= ' WHERE a.entity_type = ' . $c->param() . ' AND a.entity_id = ' . $c->param() . ' AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
+            $query .= ' ORDER BY a.priority ASC';
+            $stmt = $c->prepare($query);
+            $stmt->execute([$this->entityType, $this->entityId]);
+            $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
+
+            foreach ($result as $role) {
+                $data['priority'][$role['id']] = (int) $role['priority'];
+                $data['list'][] = $role['id'];
+            }
+
+            $this->entityRoleData = $data;
+        }
+
+        return $this->entityRoleData;
+    }
+
+    // ─── Utilidades ────────────────────────────────────────
+
+    /**
+     * Dado un conjunto de registros con distintos scopes (campo 's'),
+     * elige cuál aplica para el scopePath actual ($this->scopePath).
+     *
+     * REGLAS DE RESOLUCIÓN (en orden de precedencia):
+     *
+     * 1. MATCH EXACTO — Si algún registro tiene scope_path igual al scope actual,
+     *    ese gana sin importar qué más exista.
+     *
+     * 2. WILDCARD "prefijo/*" — Si existe un registro con scope_path "X/*" y el
+     *    scope actual está bajo X (es X exacto o cualquier sub-ruta), aplica.
+     *    Si hay múltiples wildcards que matchean, gana el de mayor profundidad
+     *    (el más específico).
+     *    Ej: "empresaX/*" cubre "empresaX", "empresaX/SucursalA", "empresaX/SucursalA/Depto"
+     *        "empresaX/SucursalA/*" es más específico y gana sobre "empresaX/*"
+     *
+     * 3. FALLBACK "*" — Si ningún registro matchea exacto ni por wildcard,
+     *    se usa el registro con scope "*" (global). Si no existe, retorna null.
+     *
+     * EJEMPLOS con scopePath = "empresaX/SucursalA":
+     *
+     *   Registros disponibles: [{s:"*"}, {s:"empresaX"}, {s:"empresaX/SucursalA"}]
+     *   → Match exacto "empresaX/SucursalA" → gana ese
+     *
+     *   Registros disponibles: [{s:"*"}, {s:"empresaX"}, {s:"empresaX/*"}]
+     *   → No hay match exacto. Wildcard "empresaX/*" matchea → gana ese
+     *   → "empresaX" sin /* NO hereda (no matchea)
+     *
+     *   Registros disponibles: [{s:"*"}, {s:"otraEmpresa/*"}]
+     *   → Solo "*" matchea → gana "*"
+     *
+     *   Registros disponibles: [{s:"empresaX"}, {s:"empresaX/*"}, {s:"empresaX/SucursalA/*"}]
+     *   → Wildcard más profundo "empresaX/SucursalA/*" gana sobre "empresaX/*"
+     *
+     * @param string|null $scopePath  Scope a resolver. null = usa $this->scopePath.
+     */
+    protected function resolveScope(array $records, ?string $scopePath = null): ?array {
+        $current = $scopePath ?? $this->scopePath;
+        $exact = $global = null;
+        $wildcards = [];
+
+        foreach ($records as $rec) {
+            $s = $rec['s'] ?? '*';
+
+            if ($s === $current) {
+                $exact = $rec;
+            } elseif ($s === '*' && $global === null) {
+                $global = $rec;
+            } elseif (str_ends_with($s, '/*')) {
+                $prefix = substr($s, 0, -2);
+                $depth = substr_count($prefix, '/');
+                // ¿El scope actual está bajo este prefijo?
+                if ($current === $prefix || str_starts_with($current . '/', $prefix . '/')) {
+                    if (!isset($wildcards[$depth])) {
+                        $wildcards[$depth] = $rec;
+                    }
+                }
+            }
+        }
+
+        if ($exact) return $exact;
+
+        // Wildcard más profundo (más específico) primero
+        if (!empty($wildcards)) {
+            krsort($wildcards);
+            return reset($wildcards);
+        }
+
+        return $global;
     }
 }

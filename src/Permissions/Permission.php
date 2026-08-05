@@ -8,8 +8,9 @@ class Permission {
     protected $level;
     protected $module_code;
     protected $module_is_developing;
-    
-    protected $featureKeys = ['create' => '0', 'read' => '1', 'update' => '2', 'delete' => '3', 'trash' => '4', 'dev' => '5'];
+    protected $payload;
+
+    protected $featureKeys = ['create' => 1, 'read' => 2, 'update' => 4, 'delete' => 8, 'trash' => 16, 'dev' => 32];
 
     public function __construct(array $data) {
         $this->id = $data['i'] ?? null;
@@ -17,22 +18,32 @@ class Permission {
         $this->level = $data['l'] ?? null;
         $this->module_code = $data['m'] ?? null;
         $this->module_is_developing = $data['d'] ?? null;
+        $this->payload = $data['p'] ?? null;
     }
     
-    public function getId() : int {
+    public function getId() : ?int {
         return $this->id;
     }
 
-    public function getModuleCode() : string {
+    public function getModuleCode() : ?string {
         return $this->module_code;
     }
 
-    public function getFeature() : array {
-        return $this->feature;
+    public function getFeature() : ?int {
+        return empty($this->feature) ? null : (int) $this->feature;
     }
 
-    public function getLevel() : int {
+    public function getLevel() : ?int {
         return $this->level;
+    }
+
+    /**
+     * Datos extra del permiso (columna `payload`, JSON).
+     *
+     * @return array|null Array decodificado del payload, NULL si no tiene
+     */
+    public function getPayload() : ?array {
+        return $this->payload;
     }
 
     /**
@@ -52,19 +63,15 @@ class Permission {
      * @return bool TRUE si tiene acceso, FALSE si no tiene acceso
      */
     public function hasFeature(string|array $feature) : bool {
-        // Validar integridad
-        if (empty($this ->feature) || !is_array($this ->feature)) {
-            return false;
-        }
-        elseif (empty($feature)) {
+        if (empty($feature)) {
             return false;
         }
 
-        // Validar permiso
-        $feature = is_array($feature) ? $feature : [$feature];
+        $bits = (int) $this->feature;
+        $feature = (array) $feature;
         foreach ($feature as $value) {
-            $value = $this ->featureKeys[$value] ?? $value;
-            if (!in_array($value, $this->feature)) {
+            $mask = $this->featureKeys[$value] ?? ((int) $value);
+            if (!($bits & $mask)) {
                 return false;
             }
         }

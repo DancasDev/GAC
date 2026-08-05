@@ -1,0 +1,149 @@
+<?php
+
+namespace DancasDev\GAC\Restrictions\Handlers;
+
+use DancasDev\GAC\Restrictions\RestrictionResult;
+use DancasDev\GAC\Restrictions\RestrictionHandlerInterface;
+
+class ByDate implements RestrictionHandlerInterface {
+    protected array $methodMap = [
+        'before'    => 'before',
+        'in_range'  => 'inRange',
+        'out_range' => 'outRange',
+        'after'     => 'after',
+        'by_day'    => 'byDay',
+    ];
+
+    public function validate(array $rules, array $context): RestrictionResult {
+        foreach ($rules as $rule) {
+            $method = $this->methodMap[$rule['r']] ?? null;
+            if ($method === null || !method_exists($this, $method)) {
+                continue;
+            }
+
+            $result = $this->{$method}($rule, $context);
+            if (!$result->passed) {
+                return $result;
+            }
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    public static function structureIsValid(string $rule, array $data): array|false {
+        return match ($rule) {
+            'before', 'after' => isset($data['d']) && is_string($data['d'])
+                ? ['d' => $data['d']] : false,
+            'in_range', 'out_range' => isset($data['sd'], $data['ed'])
+                && is_string($data['sd']) && is_string($data['ed'])
+                ? ['sd' => $data['sd'], 'ed' => $data['ed']] : false,
+            'by_day' => isset($data['d']) && is_array($data['d']) && $data['d'] !== []
+                && !array_filter($data['d'], fn($v) => !is_string($v) || !ctype_digit($v) || (int)$v < 0 || (int)$v > 6)
+                ? ['d' => $data['d']] : false,
+            default => false,
+        };
+    }
+
+    protected function before(array $rule, array $context): RestrictionResult {
+        $d = $this->resolveDate($rule['c']['d']);
+        if ($d === false) {
+            return $this->fail($rule, $d, $context, 'Invalid date format');
+        }
+
+            if (!isset($context['timestamp']) || !is_int($context['timestamp'])) {
+            return $this->fail($rule, $d, $context, 'Missing or invalid timestamp');
+        }
+
+        if ($context['timestamp'] >= $d) {
+            return $this->fail($rule, $d, $context, 'Date is after the allowed deadline');
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    protected function inRange(array $rule, array $context): RestrictionResult {
+        $sd = $this->resolveDate($rule['c']['sd']);
+        $ed = $this->resolveDate($rule['c']['ed']);
+        if ($sd === false || $ed === false) {
+            return $this->fail($rule, ['sd' => $sd, 'ed' => $ed], $context, 'Invalid date format');
+        }
+
+        if (!isset($context['timestamp']) || !is_int($context['timestamp'])) {
+            return $this->fail($rule, ['sd' => $sd, 'ed' => $ed], $context, 'Missing or invalid timestamp');
+        }
+
+        if (!($context['timestamp'] >= $sd && $context['timestamp'] <= $ed)) {
+            return $this->fail($rule, ['sd' => $sd, 'ed' => $ed], $context, 'Timestamp is outside the allowed range');
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    protected function outRange(array $rule, array $context): RestrictionResult {
+        $sd = $this->resolveDate($rule['c']['sd']);
+        $ed = $this->resolveDate($rule['c']['ed']);
+        if ($sd === false || $ed === false) {
+            return $this->fail($rule, ['sd' => $sd, 'ed' => $ed], $context, 'Invalid date format');
+        }
+
+        if (!isset($context['timestamp']) || !is_int($context['timestamp'])) {
+            return $this->fail($rule, ['sd' => $sd, 'ed' => $ed], $context, 'Missing or invalid timestamp');
+        }
+
+        if ($context['timestamp'] >= $sd && $context['timestamp'] <= $ed) {
+            return $this->fail($rule, ['sd' => $sd, 'ed' => $ed], $context, 'Timestamp is within the restricted range');
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    protected function after(array $rule, array $context): RestrictionResult {
+        $d = $this->resolveDate($rule['c']['d']);
+        if ($d === false) {
+            return $this->fail($rule, $d, $context, 'Invalid date format');
+        }
+
+        if (!isset($context['timestamp']) || !is_int($context['timestamp'])) {
+            return $this->fail($rule, $d, $context, 'Missing or invalid timestamp');
+        }
+
+        if ($context['timestamp'] <= $d) {
+            return $this->fail($rule, $d, $context, 'Date is before the allowed start');
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    protected function byDay(array $rule, array $context): RestrictionResult {
+        $allowed = $rule['c']['d'] ?? [];
+        $timestamp = $context['timestamp'] ?? time();
+        $currentDay = (string)date('w', $timestamp);
+
+        if (!in_array($currentDay, $allowed, true)) {
+            return $this->fail($rule, ['d' => $allowed], $context, 'Day is not allowed');
+        }
+
+        return new RestrictionResult(true);
+    }
+
+    protected function resolveDate(string $date): int|false {
+        $now = date('Y-m-d');
+        $parts = explode('-', $now);
+        $date = str_replace('%Y', $parts[0], $date);
+        $date = str_replace('%M', $parts[1], $date);
+        $date = str_replace('%D', $parts[2], $date);
+        return strtotime($date);
+    }
+
+    protected function fail(array $rule, mixed $config, array $context, string $msg): RestrictionResult {
+        return new RestrictionResult(
+            passed: false,
+            type: 'date',
+            rule: $rule['r'],
+            restrictionId: $rule['i'] ?? null,
+            ruleConfig: $config,
+            context: $context,
+            message: $msg,
+        );
+    }
+}
