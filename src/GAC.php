@@ -3,14 +3,19 @@
 namespace DancasDev\GAC;
 
 use DancasDev\GAC\Permissions\Permissions;
+use DancasDev\GAC\Permissions\Permission;
 use DancasDev\GAC\Restrictions\Restrictions;
+use DancasDev\GAC\Restrictions\RestrictionResult;
 use DancasDev\GAC\Drivers\Cache\CacheInterface;
 use DancasDev\GAC\Drivers\Database\ConnectionInterface;
 use DancasDev\GAC\Drivers\Database\StatementInterface;
 use DancasDev\GAC\Drivers\Database\PdoConnection;
+use DancasDev\GAC\Utils;
 use PDO;
 
 class GAC {
+    public const CACHE_SCHEMA_VERSION = 2;
+
     public ?CacheInterface $cacheAdapter = null;
 
     protected ConnectionInterface $connection;
@@ -39,7 +44,7 @@ class GAC {
         if ($cache instanceof CacheInterface) {
             $this->cacheAdapter = $cache;
         } elseif (is_array($cache)) {
-            $dir = $cache['dir'] ?? __DIR__ . '/writable';
+            $dir = $cache['dir'] ?? ($cache['path'] ?? __DIR__ . '/writable');
             $this->cacheAdapter = new \DancasDev\GAC\Drivers\Cache\FileCache($dir);
             $this->cachekey = $cache['prefix'] ?? 'gac';
             $this->cacheTtl = (int) ($cache['ttl'] ?? 1800);
@@ -56,8 +61,15 @@ class GAC {
     }
 
     public function setScope(string $scopePath): GAC {
+        if (!Utils::scopeValidate($scopePath)) {
+            throw new \InvalidArgumentException("Invalid scope path: '$scopePath'");
+        }
         $this->scopePath = $scopePath;
         return $this;
+    }
+
+    public function getScope(): string {
+        return $this->scopePath;
     }
 
     public function setCacheTtl(int $ttl): GAC {
@@ -87,7 +99,88 @@ class GAC {
     }
 
     /**
-     * Obtiene los permisos del usuario/cliente para el scope actual.
+     * Obtiene la instancia resuelta de Permission para un módulo bajo el scope activo ($this->scopePath).
+     *
+     * @param string $moduleCode Código del módulo
+     * @param bool $fromCache Si debe resolver usando el caché de la entidad
+     * @return Permission|null Instancia resuelta de Permission o NULL si no posee autorización
+     */
+    public function getPermission(string $moduleCode, bool $fromCache = true): ?Permission {
+        return $this->getPermissions($fromCache)->get($moduleCode);
+    }
+
+    /**
+     * Evalúa las restricciones aplicables sobre un contexto para el scope activo ($this->scopePath)
+     * y retorna el resultado detallado de la validación.
+     *
+     * @param array $context Contexto de ejecución a evaluar (ej: ['ip' => [...], 'date' => [...]])
+     * @param bool $fromCache Si debe resolver usando el caché de la entidad
+     * @return RestrictionResult Objeto con el resultado detallado de la evaluación de restricciones
+     */
+    public function getRestrictionResult(array $context, bool $fromCache = true): RestrictionResult {
+        return $this->getRestrictions($fromCache)->run($context);
+    }
+
+    /**
+     * Evalúa si la entidad actual tiene autorización para un módulo y característica bajo el scope activo.
+     * Resuelve: (Permisos Base + Herencia de Scope) - (Restricciones Aplicables).
+     *
+     * Principio de Menor Privilegio (Cero Brechas):
+     * Ante cualquier fallo, excepción o falta de coincidencia, retorna FALSE.
+     *
+     * @param string $module Código del módulo
+     * @param string|array|int $feature Característica requerida ('read', 'create', bitmask, etc.)
+     * @param array|null $context Contexto de restricciones opcional
+     * @return bool TRUE si está autorizado, FALSE si se deniega
+     */
+    public function can(string $module, string|array|int $feature, ?array $context = null): bool {
+        try {
+            $perm = $this->getPermission($module);
+
+            if ($perm === null) {
+                return false;
+            }
+
+            if (!$perm->hasFeature($feature)) {
+                return false;
+            }
+
+            if ($context !== null && !empty($context)) {
+                if ($this->isRestricted($context)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Evalúa si el contexto de ejecución está bloqueado por alguna restricción activa bajo el scope activo.
+     *
+     * Principio de Menor Privilegio:
+     * Ante cualquier fallo de evaluación o error en contexto, retorna TRUE (bloqueado).
+     *
+     * @param array|null $context Contexto de ejecución
+     * @return bool TRUE si existe restricción activa (bloqueo), FALSE si pasa todas las restricciones
+     */
+    public function isRestricted(?array $context = null): bool {
+        try {
+            if ($context === null || empty($context)) {
+                return false;
+            }
+
+            $result = $this->getRestrictionResult($context);
+            return !$result->passed;
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    /**
+     * Obtiene los permisos del usuario/cliente resueltos para el scope activo ($this->scopePath).
      * Resuelve scope, prioridad y granularidad módulo por módulo.
      */
     public function getPermissions(bool $fromCache = true): Permissions {
@@ -106,7 +199,7 @@ class GAC {
     }
 
     /**
-     * Obtiene las restricciones del usuario/cliente + globales.
+     * Obtiene las restricciones del usuario/cliente + globales resueltas para el scope activo ($this->scopePath).
      * Primero resuelve scope para restricciones de entidad,
      * luego agrega globales solo para tipos no definidos.
      */
@@ -139,43 +232,33 @@ class GAC {
         return new Restrictions($data);
     }
 
-    public function getPermissionList(?string $scope = null, bool $fromCache = true): array {
+    /**
+     * Exporta el arreglo crudo con todos los permisos de la entidad (con todos sus scopes) sin filtrar.
+     * Útil para exportación e hidratación en aplicaciones cliente (ej. librerías JavaScript).
+     *
+     * @param bool $fromCache Si debe resolver desde el caché de la entidad
+     * @return array Arreglo crudo de permisos: array[module_code][] = {s, i, d, f, l, p}
+     */
+    public function exportPermissions(bool $fromCache = true): array {
         $this->ensureLoaded($fromCache);
-        $records = $this->entityCache['p'] ?? [];
-        if ($scope === null) return $records;
-
-        $result = [];
-        foreach ($records as $module => $moduleRecords) {
-            $best = $this->resolveScope($moduleRecords, $scope);
-            if ($best !== null) {
-                $result[$module] = $best;
-            }
-        }
-        return $result;
+        return $this->entityCache['p'] ?? [];
     }
 
-    public function getRestrictionList(?string $scope = null, bool $fromCache = true): array {
+    /**
+     * Exporta el arreglo crudo con todas las restricciones de la entidad (incluyendo globales) sin filtrar por scope.
+     * Útil para exportación e hidratación en aplicaciones cliente (ej. librerías JavaScript).
+     *
+     * @param bool $fromCache Si debe resolver desde el caché de la entidad
+     * @return array Arreglo crudo de restricciones: array[type][] = {s, i, r, c}
+     */
+    public function exportRestrictions(bool $fromCache = true): array {
         $this->ensureLoaded($fromCache);
         $this->ensureGlobalRestrictions($fromCache);
-        $records = $this->entityCache['r'] ?? [];
 
-        if ($scope === null) {
-            $data = $records;
-            foreach ($this->globalRestrictions as $type => $rules) {
-                if (!isset($data[$type])) $data[$type] = $rules;
-            }
-            return $data;
-        }
-
-        $data = [];
-        foreach ($records as $type => $typeRecords) {
-            $best = $this->resolveScope($typeRecords, $scope);
-            if ($best !== null) $data[$type] = [$best];
-        }
+        $data = $this->entityCache['r'] ?? [];
         foreach ($this->globalRestrictions as $type => $rules) {
             if (!isset($data[$type])) {
-                $best = $this->resolveScope($rules, $scope);
-                if ($best !== null) $data[$type] = [$best];
+                $data[$type] = $rules;
             }
         }
         return $data;
@@ -185,7 +268,7 @@ class GAC {
 
     /**
      * Carga perezosa de permisos + restricciones de entidad.
-     * Intenta cache primero, si falla ejecuta consultas y persiste.
+     * Intenta cache primero, si falla ejecuta consultas y persiste ÚNICAMENTE el payload final calculated.
      */
     protected function ensureLoaded(bool $fromCache): void {
         if ($this->entityLoaded) return;
@@ -195,15 +278,19 @@ class GAC {
 
         if ($fromCache && $this->cacheAdapter) {
             $cached = $this->cacheAdapter->get($this->getCacheKey());
-            if (is_array($cached) && isset($cached['p'])) {
+            if (is_array($cached) && isset($cached['_v'], $cached['p'], $cached['r']) && $cached['_v'] === self::CACHE_SCHEMA_VERSION) {
                 $this->entityCache = $cached;
                 $this->entityLoaded = true;
                 return;
             }
         }
 
-        $this->entityCache['p'] = $this->getPermissionsFromDB();
-        $this->entityCache['r'] = $this->getEntityRestrictionsFromDB();
+        $this->entityCache = [
+            '_v'  => self::CACHE_SCHEMA_VERSION,
+            '_ts' => time(),
+            'p'   => $this->getPermissionsFromDB(),
+            'r'   => $this->getEntityRestrictionsFromDB(),
+        ];
         $this->entityLoaded = true;
 
         if ($this->cacheAdapter) {
@@ -220,8 +307,8 @@ class GAC {
 
         if ($fromCache && $this->cacheAdapter) {
             $cached = $this->cacheAdapter->get($this->getGlobalCacheKey());
-            if (is_array($cached)) {
-                $this->globalRestrictions = $cached;
+            if (is_array($cached) && isset($cached['_v'], $cached['d']) && $cached['_v'] === self::CACHE_SCHEMA_VERSION) {
+                $this->globalRestrictions = $cached['d'];
                 $this->globalLoaded = true;
                 return;
             }
@@ -231,7 +318,11 @@ class GAC {
         $this->globalLoaded = true;
 
         if ($this->cacheAdapter) {
-            $this->cacheAdapter->save($this->getGlobalCacheKey(), $this->globalRestrictions, $this->cacheTtl);
+            $this->cacheAdapter->save($this->getGlobalCacheKey(), [
+                '_v'  => self::CACHE_SCHEMA_VERSION,
+                '_ts' => time(),
+                'd'   => $this->globalRestrictions,
+            ], $this->cacheTtl);
         }
     }
 
@@ -249,7 +340,6 @@ class GAC {
         return true;
     }
 
-    // ponytail: unified cache purge — perms + restrictions share one cache key
     public function purgeCacheBy(string $entityType, array $entityIds = []): bool {
         if (empty($this->cacheAdapter)) {
             return false;
@@ -289,37 +379,33 @@ class GAC {
     // ─── Consultas a base de datos ────────────────────────────────────────
 
     /**
-     * Obtiene y procesa los permisos desde la base de datos.
-     *
-     * FLUJO DE LA GRANULARIDAD:
-     *
-     * 1. QUERY: Trae todos los registros de gac_permission para la entidad
-     *    (permisos directos del usuario/cliente + permisos heredados de roles).
-     *    ORDER BY entity_type DESC  → primero personales (type=1/2), luego roles (type=0).
-     *
-     * 2. PRIORIDAD: Asigna prioridad numérica a cada registro:
-     *    - Personal (entity_type != '0') → priority = -1 (máxima)
-     *    - Rol      (entity_type = '0')  → priority = del rol en gac_role_entity
-     *
-     * 3. QUERY MÓDULOS: Trae datos de gac_module (unidos a su categoría solo
-     *    para descartar módulos/categorías deshabilitados) de los módulos referidos.
-     *
-     * 4. ORDENAMIENTO: Ordena los permisos por prioridad ascendente.
-     *    Así los permisos personales (-1) quedan antes que los de roles (0..N).
-     *
-     * 5. DEDUP: Cada permiso aplica directamente al módulo que referencia (module_id).
-     *    Dedup por (module_code, scope_path): el primer permiso encontrado
-     *    (mayor prioridad) para cada combinación es el que gana.
-     *    Ej: si personal tiene users con scope="*" y rol también,
-     *        el personal gana por tener priority=-1.
-     *
-     * RESULTADO: array[module_code][] = {s, i, d, f, l, p}
-     *   - s: scope_path del permiso
-     *   - i: id del permiso en gac_permission
-     *   - d: is_developing del módulo
-     *   - f: feature (bitmask)
-     *   - l: level
-     *   - p: payload decodificado (JSON), null si no tiene
+     * Expande un string multi-path separado por comas o aplica la herencia dinámica
+     * desde el scope asignado en `gac_role_entity`.
+     */
+    protected function expandScopePath(?string $permScope, ?string $entityRoleScope): array {
+        if ($permScope === null || trim($permScope) === '') {
+            if ($entityRoleScope === null || trim($entityRoleScope) === '') {
+                return ['*'];
+            }
+            $raw = $entityRoleScope;
+        } else {
+            $raw = $permScope;
+        }
+
+        $parts = explode(',', $raw);
+        $result = [];
+        foreach ($parts as $p) {
+            $trimmed = trim($p);
+            if ($trimmed !== '') {
+                $result[] = $trimmed;
+            }
+        }
+
+        return !empty($result) ? array_values(array_unique($result)) : ['*'];
+    }
+
+    /**
+     * Obtiene y procesa los permisos desde la base de datos aplicando herencia y multi-path.
      */
     protected function getPermissionsFromDB(): array {
         $response = [];
@@ -348,19 +434,35 @@ class GAC {
 
         $moduleIds = [];
         $permissions = [];
-        foreach ($result as $key => $record) {
+        foreach ($result as $record) {
             $moduleIds[$record['module_id']] = $record['module_id'];
 
             $record['feature'] = (int) ($record['feature'] ?? 0);
             $record['level'] = (int) $record['level'];
             $record['payload'] = $this->decodePayload($record['payload'] ?? null);
+
             if ($record['entity_type'] !== '0') {
-                $record['priority'] = -1;
+                $priority = -1;
+                $entityRoleScope = null;
             } else {
-                $record['priority'] = $roleData['priority'][$record['entity_id']] ?? 100;
+                $roleId = (int) $record['entity_id'];
+                $priority = $roleData['priority'][$roleId] ?? 100;
+                $entityRoleScope = $roleData['scope'][$roleId] ?? null;
             }
 
-            $permissions[$key] = $record;
+            $paths = $this->expandScopePath($record['scope_path'] ?? null, $entityRoleScope);
+
+            foreach ($paths as $path) {
+                $permissions[] = [
+                    'id'         => $record['id'],
+                    'module_id'  => $record['module_id'],
+                    'priority'   => $priority,
+                    'scope_path' => $path,
+                    'feature'    => $record['feature'],
+                    'level'      => $record['level'],
+                    'payload'    => $record['payload'],
+                ];
+            }
         }
 
         $modulesBy = [];
@@ -417,33 +519,7 @@ class GAC {
     }
 
     /**
-     * Obtiene y procesa las restricciones de la entidad desde la base de datos.
-     *
-     * FLUJO DE LA GRANULARIDAD:
-     *
-     * 1. QUERY: Trae todas las restricciones de la entidad (directas + heredadas de roles).
-     *    NO incluye globales (entity_type='3') — esas se cargan aparte en getGlobalRestrictionsFromDB().
-     *    ORDER BY entity_type DESC → primero personales (type=1/2), luego roles (type=0).
-     *
-     * 2. PRIORIDAD: Asigna prioridad numérica a cada registro:
-     *    - Personal (entity_type coincide con la entidad actual) → priority = -1 (máxima)
-     *    - Rol      (entity_type='0') → priority = prioridad del rol en gac_role_entity
-     *
-     * 3. ORDENAMIENTO: Ordena por prioridad ascendente.
-     *    Personales (-1) primero, luego roles por su prioridad (0..N).
-     *
-     * 4. DEDUP POR TIPO (TYPE): La primera entidad que establece una restricción
-     *    para un TYPE gana, y las siguientes entidades con el mismo TYPE se descartan.
-     *    Ej: si el usuario tiene restricción 'date' (personal, priority=-1)
-     *        y un rol también tiene 'date' (priority=0), solo la personal se conserva.
-     *    Esto permite que un usuario SOBREESCRIBA las restricciones de su rol
-     *    para un TYPE específico, sin perder los otros tipos del rol.
-     *
-     * RESULTADO: array[type][] = {s, i, r, d}
-     *   - s: scope_path
-     *   - i: id de la restricción
-     *   - r: rule (in_range, before, allow, deny, etc.)
-     *   - c: config decodificada del JSON config
+     * Obtiene y procesa las restricciones de la entidad desde la base de datos aplicando herencia y multi-path.
      */
     protected function getEntityRestrictionsFromDB(): array {
         $roleData = $this->getEntityRoleData();
@@ -468,26 +544,34 @@ class GAC {
             return [];
         }
 
-        // Asignar prioridad
+        // Asignar prioridad y expandir scopes
         $records = [];
         $entityTypeKey = (string) $this->entityType;
         foreach ($result as $record) {
             if ($record['entity_type'] === $entityTypeKey) {
                 $priority = -1;
+                $entityRoleScope = null;
             } else {
-                $priority = $roleData['priority'][$record['entity_id']] ?? 100;
+                $roleId = (int) $record['entity_id'];
+                $priority = $roleData['priority'][$roleId] ?? 100;
+                $entityRoleScope = $roleData['scope'][$roleId] ?? null;
             }
 
-            $records[] = [
-                'id' => $record['id'],
-                'priority' => $priority,
-                'entity_type' => $record['entity_type'],
-                'entity_id' => $record['entity_id'],
-                'scope_path' => $record['scope_path'] ?? '*',
-                'type' => $record['type'],
-                'r' => $record['rule'],
-                'config' => @json_decode($record['config'], true) ?? []
-            ];
+            $paths = $this->expandScopePath($record['scope_path'] ?? null, $entityRoleScope);
+            $config = @json_decode($record['config'], true) ?? [];
+
+            foreach ($paths as $path) {
+                $records[] = [
+                    'id'          => $record['id'],
+                    'priority'    => $priority,
+                    'entity_type' => $record['entity_type'],
+                    'entity_id'   => $record['entity_id'],
+                    'scope_path'  => $path,
+                    'type'        => $record['type'],
+                    'r'           => $record['rule'],
+                    'config'      => $config
+                ];
+            }
         }
 
         // Ordenar por prioridad
@@ -532,12 +616,16 @@ class GAC {
 
         $response = [];
         foreach ($result as $record) {
-            $response[$record['type']][] = [
-                's' => $record['scope_path'] ?? '*',
-                'i' => $record['id'],
-                'r' => $record['rule'],
-                'c' => @json_decode($record['config'], true) ?? []
-            ];
+            $paths = $this->expandScopePath($record['scope_path'] ?? null, null);
+            $config = @json_decode($record['config'], true) ?? [];
+            foreach ($paths as $path) {
+                $response[$record['type']][] = [
+                    's' => $path,
+                    'i' => $record['id'],
+                    'r' => $record['rule'],
+                    'c' => $config
+                ];
+            }
         }
 
         return $response;
@@ -562,11 +650,11 @@ class GAC {
         return $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
     }
 
-    protected function getEntityRoleData(bool $reset = false) {
+    protected function getEntityRoleData(bool $reset = false): array {
         if ($reset || empty($this->entityRoleData)) {
-            $data = ['list' => [], 'priority' => []];
+            $data = ['list' => [], 'priority' => [], 'scope' => []];
             $c = $this->connection;
-            $query = 'SELECT b.id, a.priority';
+            $query = 'SELECT b.id, a.priority, a.scope_path';
             $query .= ' FROM gac_role_entity AS a INNER JOIN gac_role AS b ON a.role_id = b.id';
             $query .= ' WHERE a.entity_type = ' . $c->param() . ' AND a.entity_id = ' . $c->param() . ' AND a.is_disabled = \'0\' AND b.is_disabled = \'0\' AND a.deleted_at IS NULL AND b.deleted_at IS NULL';
             $query .= ' ORDER BY a.priority ASC';
@@ -575,8 +663,10 @@ class GAC {
             $result = $stmt->fetchAll(StatementInterface::FETCH_ASSOC);
 
             foreach ($result as $role) {
-                $data['priority'][$role['id']] = (int) $role['priority'];
-                $data['list'][] = $role['id'];
+                $roleId = (int) $role['id'];
+                $data['priority'][$roleId] = (int) $role['priority'];
+                $data['scope'][$roleId] = ($role['scope_path'] !== null && trim($role['scope_path']) !== '') ? (string) $role['scope_path'] : null;
+                $data['list'][] = $roleId;
             }
 
             $this->entityRoleData = $data;
@@ -590,38 +680,6 @@ class GAC {
     /**
      * Dado un conjunto de registros con distintos scopes (campo 's'),
      * elige cuál aplica para el scopePath actual ($this->scopePath).
-     *
-     * REGLAS DE RESOLUCIÓN (en orden de precedencia):
-     *
-     * 1. MATCH EXACTO — Si algún registro tiene scope_path igual al scope actual,
-     *    ese gana sin importar qué más exista.
-     *
-     * 2. WILDCARD "prefijo/*" — Si existe un registro con scope_path "X/*" y el
-     *    scope actual está bajo X (es X exacto o cualquier sub-ruta), aplica.
-     *    Si hay múltiples wildcards que matchean, gana el de mayor profundidad
-     *    (el más específico).
-     *    Ej: "empresaX/*" cubre "empresaX", "empresaX/SucursalA", "empresaX/SucursalA/Depto"
-     *        "empresaX/SucursalA/*" es más específico y gana sobre "empresaX/*"
-     *
-     * 3. FALLBACK "*" — Si ningún registro matchea exacto ni por wildcard,
-     *    se usa el registro con scope "*" (global). Si no existe, retorna null.
-     *
-     * EJEMPLOS con scopePath = "empresaX/SucursalA":
-     *
-     *   Registros disponibles: [{s:"*"}, {s:"empresaX"}, {s:"empresaX/SucursalA"}]
-     *   → Match exacto "empresaX/SucursalA" → gana ese
-     *
-     *   Registros disponibles: [{s:"*"}, {s:"empresaX"}, {s:"empresaX/*"}]
-     *   → No hay match exacto. Wildcard "empresaX/*" matchea → gana ese
-     *   → "empresaX" sin /* NO hereda (no matchea)
-     *
-     *   Registros disponibles: [{s:"*"}, {s:"otraEmpresa/*"}]
-     *   → Solo "*" matchea → gana "*"
-     *
-     *   Registros disponibles: [{s:"empresaX"}, {s:"empresaX/*"}, {s:"empresaX/SucursalA/*"}]
-     *   → Wildcard más profundo "empresaX/SucursalA/*" gana sobre "empresaX/*"
-     *
-     * @param string|null $scopePath  Scope a resolver. null = usa $this->scopePath.
      */
     protected function resolveScope(array $records, ?string $scopePath = null): ?array {
         $current = $scopePath ?? $this->scopePath;
@@ -638,7 +696,6 @@ class GAC {
             } elseif (str_ends_with($s, '/*')) {
                 $prefix = substr($s, 0, -2);
                 $depth = substr_count($prefix, '/');
-                // ¿El scope actual está bajo este prefijo?
                 if ($current === $prefix || str_starts_with($current . '/', $prefix . '/')) {
                     if (!isset($wildcards[$depth])) {
                         $wildcards[$depth] = $rec;
@@ -649,7 +706,6 @@ class GAC {
 
         if ($exact) return $exact;
 
-        // Wildcard más profundo (más específico) primero
         if (!empty($wildcards)) {
             krsort($wildcards);
             return reset($wildcards);

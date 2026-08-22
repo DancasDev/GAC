@@ -134,8 +134,8 @@ class TestCase {
         $ins('gac_permission', 'entity_type, entity_id, module_id, scope_path, feature, level, payload',
             "('1', 1, 3, 'empresaX', 1, '1', NULL), ('1', 1, 3, 'empresaX/*', 7, '1', NULL), "
             . "('1', 1, 5, '*', 1, '1', '{\"locker_ids\":[1,2,3]}')");
-        $ins('gac_role_entity', 'role_id, entity_type, entity_id, priority',
-            "(1, '1', 1, 0), (2, '1', 2, 0)");
+        $ins('gac_role_entity', 'role_id, entity_type, entity_id, priority, scope_path',
+            "(1, '1', 1, 0, NULL), (2, '1', 2, 0, NULL)");
         $ins('gac_restriction', 'entity_type, entity_id, scope_path, type, rule, config',
             "('3', 0, '*', 'date', 'in_range', '{\"sd\":\"%Y-%M-%D 08:00\",\"ed\":\"%Y-%M-%D 18:00\"}'), "
             . "('3', 0, '*', 'ip', 'allow', '{\"list\":[\"192.168.1.*\",\"10.0.*.*\"]}'), "

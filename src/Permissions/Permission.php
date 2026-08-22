@@ -58,11 +58,11 @@ class Permission {
     /**
      * Verificar si existe acceso a determinadas caracteristicas
      * 
-     * @param string|array $feature - Características a validar
+     * @param string|array|int $feature - Características a validar
      * 
      * @return bool TRUE si tiene acceso, FALSE si no tiene acceso
      */
-    public function hasFeature(string|array $feature) : bool {
+    public function hasFeature(string|array|int $feature) : bool {
         if (empty($feature)) {
             return false;
         }
