@@ -1,158 +1,139 @@
-# Caché
+# Guía: Sistema de Caché en GAC
 
-GAC incluye un sistema de caché para evitar consultas repetitivas a la base de
-datos. Está diseñado para ser reemplazable: puede usar el driver incluido
-basado en archivos o implementar su propio driver (Redis, Memcached, etc.).
+GAC incluye un mecanismo de almacenamiento en caché para evitar realizar consultas a la base de datos en cada evaluación de permisos o restricciones.
 
 ---
 
-## 1. CacheInterface
+## 1. Estructura de Almacenamiento (Versión 2)
 
-Contrato que cualquier driver de caché debe implementar:
+GAC persiste en caché el resultado final procesado y deduplicado de cada entidad en una sola clave:
 
-| Método | Descripción | Retorna |
-|--------|-------------|---------|
-| `get(string $key)` | Obtiene un valor del caché | `mixed` |
-| `save(string $key, mixed $data, ?int $ttl)` | Almacena un valor con tiempo de vida (segundos) | `bool` |
-| `delete(string $key)` | Elimina un valor | `bool` |
-| `deleteMatching(string $pattern)` | Elimina todos los valores que coincidan con un patrón glob | `int` |
-| `clean()` | Elimina todos los valores del caché | `bool` |
-
----
-
-## 2. FileCache — driver por defecto
-
-Almacena los valores en archivos JSON individuales dentro de un directorio.
-Cada archivo contiene el valor serializado y su fecha de expiración.
-
-```php
-use DancasDev\GAC\Drivers\Cache\FileCache;
-
-// Especificando el directorio
-$cache = new FileCache('/ruta/al/cache');
-
-// También se puede establecer después
-$cache = new FileCache();
-$cache->setDir('/ruta/al/cache');
-
-// Guardar con TTL de 5 minutos
-$cache->save('mi_clave', $datos, 300);
-
-// Recuperar
-$datos = $cache->get('mi_clave');  // null si no existe o expiró
-
-// Eliminar
-$cache->delete('mi_clave');
-
-// Limpiar todo
-$cache->clean();
+```json
+{
+  "_v": 2,
+  "_ts": 1771780000,
+  "p": {
+    "caja_chica": [
+      { "s": "/sucursal/caracas", "i": 101, "d": "0", "f": 7, "l": "1", "p": null },
+      { "s": "/sucursal/maracaibo", "i": 102, "d": "0", "f": 7, "l": "1", "p": null }
+    ]
+  },
+  "r": {
+    "ip": [
+      { "s": "*", "i": 45, "r": "allow", "c": { "list": ["192.168.1.*"] } }
+    ]
+  }
+}
 ```
 
+- **`_v`**: Versión del esquema de caché (permite invalidar automáticamente estructuras antiguas).
+- **`_ts`**: Timestamp en el momento de generación.
+- **`p`**: Permisos de la entidad agrupados por módulo.
+- **`r`**: Restricciones de la entidad agrupadas por tipo.
+
 ---
 
-## 3. Usar caché con GAC
+## 2. Adaptadores de Caché
 
-### Con configuración automática (archivos)
+### 2.1 FileCache (Adaptador por Archivos)
+
+Guarda las entradas en archivos JSON en una ruta local configurada:
 
 ```php
+use DancasDev\GAC\GAC;
+
 $gac = new GAC($pdo, [
-    'dir'    => __DIR__ . '/cache',
+    'driver' => 'file',
+    'path'   => __DIR__ . '/writable/cache',
     'prefix' => 'gac',
-    'ttl'    => 1800,      // 30 minutos
+    'ttl'    => 3600 // Tiempo de vida en segundos (1 hora)
 ]);
 ```
 
-Si no se especifica `dir`, se usa `src/writable/`.
-
-### Con un driver personalizado
-
-```php
-$gac = new GAC($pdo, new MiCacheRedis());
-```
-
-GAC detecta automáticamente si el segundo parámetro es un array (configuración
-de FileCache) o una instancia de `CacheInterface` (driver personalizado).
-
 ---
 
-## 4. Crear un driver personalizado
+### 2.2 Adaptadores Personalizados (Redis, Memcached, etc.)
 
-Implemente `CacheInterface` para usar Redis, Memcached, MySQL, o cualquier
-otro sistema de almacenamiento:
+Cualquier sistema de almacenamiento puede integrarse implementando la interfaz `CacheInterface`:
+
+```php
+namespace DancasDev\GAC\Drivers\Cache;
+
+interface CacheInterface {
+    public function get(string $key): mixed;
+    public function save(string $key, mixed $value, int $ttl = 0): bool;
+    public function delete(string $key): bool;
+    public function deleteMatching(string $pattern): bool;
+    public function clean(): bool;
+}
+```
+
+#### Ejemplo con Redis:
 
 ```php
 use DancasDev\GAC\Drivers\Cache\CacheInterface;
 
-class RedisCache implements CacheInterface {
-    private \Redis $redis;
-
-    public function __construct(\Redis $redis) {
-        $this->redis = $redis;
-    }
+class RedisCacheDriver implements CacheInterface {
+    public function __construct(protected \Redis $redis) {}
 
     public function get(string $key): mixed {
         $data = $this->redis->get($key);
-        return $data === false ? null : json_decode($data, true);
+        return $data !== false ? json_decode($data, true) : null;
     }
 
-    public function save(string $key, mixed $data, ?int $ttl = 60): bool {
-        $encoded = json_encode($data);
-        if ($ttl) {
-            return $this->redis->setex($key, $ttl, $encoded);
-        }
-        return $this->redis->set($key, $encoded);
+    public function save(string $key, mixed $value, int $ttl = 0): bool {
+        $json = json_encode($value);
+        return $ttl > 0 ? $this->redis->setEx($key, $ttl, $json) : $this->redis->set($key, $json);
     }
 
     public function delete(string $key): bool {
         return $this->redis->del($key) > 0;
     }
 
-    public function deleteMatching(string $pattern): int {
+    public function deleteMatching(string $pattern): bool {
         $keys = $this->redis->keys($pattern);
-        if (empty($keys)) return 0;
-        return $this->redis->del($keys);
+        return !empty($keys) ? $this->redis->del($keys) > 0 : true;
     }
 
     public function clean(): bool {
-        $this->redis->flushDB();
-        return true;
+        return $this->redis->flushDB();
     }
 }
-```
 
-```php
-$redis = new \Redis();
-$redis->connect('127.0.0.1', 6379);
-
-$gac = new GAC($pdo, new RedisCache($redis));
+// Inyección en GAC:
+$gac = new GAC($pdo, new RedisCacheDriver($redisInstance));
 ```
 
 ---
 
-## 5. Limpiar caché desde GAC
+## 3. Invalidación y Purga
+
+Cuando se modifican permisos o roles en la base de datos, el caché de las entidades afectadas debe ser invalidado:
+
+### 3.1 Purgar por Tipo de Entidad (`purgeCacheBy`)
 
 ```php
-// Limpiar caché de la entidad actual
-$gac->clearCache();
+// Purgar caché de un usuario (ID: 10)
+$gac->purgeCacheBy('user', [10]);
 
-// Limpiar también el caché global (restricciones globales)
-$gac->clearCache(true);
-```
+// Purgar caché de un cliente (ID: 25)
+$gac->purgeCacheBy('client', [25]);
 
----
-
-## 6. Purgar caché por entidad
-
-Como permisos y restricciones de una entidad comparten la misma clave de caché,
-un solo método unificado los purga a ambos:
-
-```php
-// Purgar caché de un usuario específico
-$gac->purgeCacheBy('user', [30]);
-
-// Purgar caché de un rol (todos los usuarios con ese rol)
-$gac->purgeCacheBy('role', [1]);
+// Purgar caché de un rol (invalida a todos los usuarios y clientes asignados a ese rol)
+$gac->purgeCacheBy('role', [5]);
 
 // Purgar caché de restricciones globales
 $gac->purgeCacheBy('global');
+```
+
+---
+
+### 3.2 Limpiar la Entidad Activa (`clearCache`)
+
+```php
+// Limpia la caché de la entidad declarada en la instancia actual
+$gac->clearCache();
+
+// Limpia también las restricciones globales
+$gac->clearCache(true);
 ```

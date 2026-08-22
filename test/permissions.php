@@ -34,21 +34,14 @@ test('supervisor solo read en users, sin my_profile', function () {
     assert($p->get('my_profile') === null);
 });
 
-test('getPermissionList sin filtro tiene users', function () use ($gac) {
-    $list = $gac->getPermissionList();
-    assert(is_array($list['users']) && count($list['users']) >= 3);
+test('exportPermissions exporta el arreglo crudo de permisos para la entidad', function () use ($gac) {
+    $raw = $gac->exportPermissions();
+    assert(is_array($raw['users']) && count($raw['users']) >= 3);
 });
 
-test('getPermissionList("*") feature=63', function () use ($gac) {
-    assert($gac->getPermissionList('*')['users']['f'] === 63);
-});
-
-test('getPermissionList("empresaX") feature=1', function () use ($gac) {
-    assert($gac->getPermissionList('empresaX')['users']['f'] === 1);
-});
-
-test('getPermissionList("empresaX/SucursalA") feature=7', function () use ($gac) {
-    assert($gac->getPermissionList('empresaX/SucursalA')['users']['f'] === 7);
+test('exportRestrictions exporta el arreglo crudo de restricciones para la entidad', function () use ($gac) {
+    $rawR = $gac->exportRestrictions();
+    assert(is_array($rawR) && isset($rawR['date']));
 });
 
 test('purgeCacheBy user returns true and removes cache', function () {

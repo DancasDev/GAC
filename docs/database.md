@@ -1,138 +1,96 @@
-# Drivers de Base de Datos
+# Guía: Conexión y Drivers de Base de Datos
 
-GAC se conecta a la base de datos a través de una abstracción que permite usar
-**cualquier conexión existente** sin importar el framework o el driver nativo.
-
----
-
-## 1. Interfaces
-
-### `ConnectionInterface`
-
-Contrato que un driver de base de datos debe implementar:
-
-| Método | Descripción | Retorna |
-|--------|-------------|---------|
-| `param(?int $index)` | Placeholder para parámetros en SQL | `string` |
-| `prepare(string $query)` | Prepara una sentencia SQL | `StatementInterface\|false` |
-| `exec(string $statement)` | Ejecuta una sentencia sin resultado (DDL) | `int\|false` |
-| `lastInsertId(?string $name)` | ID de la última inserción | `string\|false` |
-
-### `StatementInterface`
-
-Contrato que un statement preparado debe implementar:
-
-| Método | Descripción | Retorna |
-|--------|-------------|---------|
-| `execute(?array $params)` | Ejecuta con parámetros | `bool` |
-| `fetchAll(int $mode)` | Obtiene todos los registros | `array` |
-
-Constante `FETCH_ASSOC = 2` (mismo valor que `PDO::FETCH_ASSOC`).
+GAC es agnóstico al motor de base de datos y al framework web. Admite **MySQL (5.7+)** y **PostgreSQL (12+)** a través de una interfaz de abstracción liviana.
 
 ---
 
-## 2. Adapters incluidos
+## 1. Adaptadores Nativos Incluidos
 
-La librería incluye tres adapters listos para usar:
-
-| Adapter | Envuelve | Driver | Placeholder |
-|---------|----------|--------|-------------|
-| `PdoConnection` | `PDO` | MySQL, PostgreSQL, etc. | `?` |
-| `MysqliConnection` | `\mysqli` | MySQL | `?` |
-| `PgsqlConnection` | `\PgSql\Connection` | PostgreSQL | `$1`, `$2`… |
-
-### `param()` — placeholders
-
-Cada adapter genera el placeholder correcto según el driver nativo:
-
-```php
-// PdoConnection / MysqliConnection → siempre "?"
-$conn->param()  // "?"
-$conn->param()  // "?"
-$conn->param(0) // "?" (índice explícito)
-
-// PgsqlConnection → auto-incremental "$1", "$2"…
-$conn->param()  // "$1"
-$conn->param()  // "$2"
-$conn->param(0) // "$1" (índice explícito, no modifica el contador)
-$conn->param()  // "$3"
-```
-
-El contador se reinicia automáticamente al llamar a `prepare()`.
+| Adaptador | Driver Envuelto | Motor BD | Placeholder SQL |
+|---|---|---|---|
+| **`PdoConnection`** | `\PDO` | MySQL, PostgreSQL, etc. | `?` |
+| **`MysqliConnection`** | `\mysqli` | MySQL | `?` |
+| **`PgsqlConnection`** | `\PgSql\Connection` | PostgreSQL | `$1`, `$2`, ... |
 
 ---
 
-## 3. Uso básico
+## 2. Uso con PHP Puro
 
+### Con PDO (Recomendado):
 ```php
 use DancasDev\GAC\GAC;
 
-// PHP puro — con PDO (sigue funcionando igual)
+$pdo = new PDO('mysql:host=localhost;dbname=mi_app;charset=utf8mb4', 'root', '');
 $gac = new GAC($pdo);
+```
 
-// PHP puro — con mysqli nativo
-$mysqli = new mysqli('localhost', 'root', '', 'basedatos');
-$gac = new GAC(new \DancasDev\GAC\Drivers\Database\MysqliConnection($mysqli));
+### Con MySQLi Nativo:
+```php
+use DancasDev\GAC\GAC;
+use DancasDev\GAC\Drivers\Database\MysqliConnection;
 
-// PHP puro — con pgsql nativo
-$pgsql = pg_connect('host=localhost dbname=basedatos user=postgres');
-$gac = new GAC(new \DancasDev\GAC\Drivers\Database\PgsqlConnection($pgsql));
+$mysqli = new mysqli('localhost', 'root', '', 'mi_app');
+$gac = new GAC(new MysqliConnection($mysqli));
+```
+
+### Con PostgreSQL Nativo:
+```php
+use DancasDev\GAC\GAC;
+use DancasDev\GAC\Drivers\Database\PgsqlConnection;
+
+$pg = pg_connect('host=localhost dbname=mi_app user=postgres password=secret');
+$gac = new GAC(new PgsqlConnection($pg));
 ```
 
 ---
 
-## 4. Uso con frameworks
+## 3. Integración con Frameworks
 
-### Laravel
-
+### Laravel (Eloquent / DB Facade):
 ```php
-$gac = new GAC(new \DancasDev\GAC\Drivers\Database\PdoConnection(
-    \DB::connection()->getPdo()
-));
+use DancasDev\GAC\GAC;
+use DancasDev\GAC\Drivers\Database\PdoConnection;
+use Illuminate\Support\Facades\DB;
+
+$gac = new GAC(new PdoConnection(DB::connection()->getPdo()));
 ```
 
-### Symfony / Doctrine
-
+### CodeIgniter 4:
 ```php
-$gac = new GAC(new \DancasDev\GAC\Drivers\Database\PdoConnection(
-    $entityManager->getConnection()->getNativeConnection()
-));
-```
+use DancasDev\GAC\GAC;
+use DancasDev\GAC\Drivers\Database\MysqliConnection;
+use DancasDev\GAC\Drivers\Database\PgsqlConnection;
 
-### CodeIgniter 4 — MySQLi
-
-```php
 $db = \Config\Database::connect();
-$gac = new GAC(new \DancasDev\GAC\Drivers\Database\MysqliConnection(
-    $db->connID
-));
+
+// Con driver MySQLi en CI4:
+$gac = new GAC(new MysqliConnection($db->connID));
+
+// Con driver Postgre en CI4:
+$gac = new GAC(new PgsqlConnection($db->connID));
 ```
 
-### CodeIgniter 4 — PostgreSQL
-
+### Symfony / Doctrine ORM:
 ```php
-$db = \Config\Database::connect();
-$gac = new GAC(new \DancasDev\GAC\Drivers\Database\PgsqlConnection(
-    $db->connID
-));
+use DancasDev\GAC\GAC;
+use DancasDev\GAC\Drivers\Database\PdoConnection;
+
+$pdo = $entityManager->getConnection()->getNativeConnection();
+$gac = new GAC(new PdoConnection($pdo));
 ```
 
 ---
 
-## 5. Schema con adapters
+## 4. Instalación del Esquema con `Schema`
 
-`Schema::install()` y `Schema::uninstall()` también aceptan cualquier adapter:
+La clase `Schema` acepta cualquier adaptador de conexión o instancia directa de `PDO`:
 
 ```php
 use DancasDev\GAC\Schema;
-use DancasDev\GAC\Drivers\Database\MysqliConnection;
 
-$mysqli = new mysqli('localhost', 'root', '', 'basedatos');
-$conn = new MysqliConnection($mysqli);
+// Crear todas las tablas
+Schema::install($connection);
 
-Schema::install($conn);     // Crea las tablas
-Schema::uninstall($conn);   // Elimina solo las tablas GAC
+// Eliminar solo las tablas de GAC
+Schema::uninstall($connection);
 ```
-
-> **Nota:** Si se pasa un `PDO` directamente, Schema lo envuelve automáticamente
-> en un `PdoConnection`. No es necesario hacerlo manualmente.

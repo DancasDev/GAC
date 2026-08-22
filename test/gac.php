@@ -74,3 +74,24 @@ test('scope fallback * → feature=63', function () {
     assert($u !== null);
     assert($u->hasFeature('delete'));
 });
+
+test('getPermission directo devuelve Permission o null', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo);
+    $gac->setEntity('user', 1)->setScope('empresaX');
+    $perm = $gac->getPermission('users');
+    assert($perm instanceof \DancasDev\GAC\Permissions\Permission);
+    assert($perm->hasFeature('create'));
+
+    $nullPerm = $gac->getPermission('modulo_inexistente');
+    assert($nullPerm === null);
+});
+
+test('getRestrictionResult directo devuelve RestrictionResult detallado', function () {
+    $gac = new \DancasDev\GAC\GAC(TestCase::$pdo);
+    $gac->setEntity('user', 1)->setScope('*');
+    $res = $gac->getRestrictionResult(['ip' => ['ip' => '200.0.0.1']]);
+    assert($res instanceof \DancasDev\GAC\Restrictions\RestrictionResult);
+    assert($res->passed === false);
+    assert($res->type === 'ip');
+    assert($res->rule === 'allow');
+});

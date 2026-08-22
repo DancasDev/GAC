@@ -84,7 +84,7 @@ class ByDomain implements RestrictionHandlerInterface {
         if (!str_contains($pattern, '*')) {
             return false;
         }
-        $regex = '/^' . str_replace(['.', '*'], ['\.', '[^.]+'], $pattern) . '$/';
+        $regex = '/^' . str_replace(['.', '*'], ['\.', '.+'], $pattern) . '$/';
         return (bool) preg_match($regex, $host);
     }
 

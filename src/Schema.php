@@ -111,6 +111,7 @@ class Schema {
                     'role_id'     => $b('int') + ['notnull' => true, 'comment' => 'Referencia al rol asignado'],
                     'entity_type' => ['type' => 'enum', 'vals' => ['1', '2'], 'notnull' => true, 'comment' => '1=Usuario, 2=Cliente'],
                     'entity_id'   => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad asignada'],
+                    'scope_path'  => $b('varchar', 255) + ['comment' => 'Scope del rol para esta entidad. Paths separados por coma (NULL=sin scope de entidad). Ej: /sucursal/caracas,/sucursal/maracaibo/*'],
                     'priority'    => $b('tinyint', 1) + ['notnull' => true, 'default' => '0', 'comment' => '0=principal, >0=secundario'],
                     'is_disabled' => $en(['0', '1']) + ['comment' => '0=No, 1=Si'],
                 ],
@@ -147,7 +148,7 @@ class Schema {
                     'module_id'        => $b('int') + ['notnull' => true, 'comment' => 'Modulo al que se otorga el permiso'],
                     'entity_type'      => ['type' => 'enum', 'vals' => ['0', '1', '2'], 'notnull' => true, 'comment' => '0=Rol, 1=Usuario, 2=Cliente'],
                     'entity_id'        => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad que posee el permiso'],
-                    'scope_path'       => $b('varchar', 255) + ['notnull' => true, 'default' => '*', 'comment' => 'Ruta jerarquica de alcance: * (global), empresaX, empresaX/SucursalA'],
+                    'scope_path'       => $b('varchar', 255) + ['comment' => 'Rutas jerarquicas separadas por coma (NULL=heredar scope de gac_role_entity). Ej: /sucursal/1,/sucursal/2/*'],
                     'feature'          => $b('smallint', 5) + ['notnull' => true, 'default' => '0', 'comment' => 'Bitmask: 1=Crear, 2=Leer, 4=Actualizar, 8=Eliminar, 16=Papelera, 32=Modo desarrollo'],
                     'level'            => ['type' => 'enum', 'vals' => ['0', '1', '2'], 'notnull' => true, 'default' => '1', 'comment' => '0=Bajo, 1=Normal, 2=Alto'],
                     'payload'          => ['type' => 'longtext', 'comment' => 'Datos extra del permiso en JSON (p. ej. locker_ids permitidos)'],
@@ -166,7 +167,7 @@ class Schema {
                     'id'          => $b('serial'),
                     'entity_type' => ['type' => 'enum', 'vals' => ['0', '1', '2', '3'], 'notnull' => true, 'comment' => '0=Rol, 1=Usuario, 2=Cliente, 3=Todos'],
                     'entity_id'   => $b('int') + ['notnull' => true, 'comment' => 'ID de la entidad'],
-                    'scope_path'  => $b('varchar', 255) + ['notnull' => true, 'default' => '*', 'comment' => 'Ruta jerarquica de alcance (mismo concepto que gac_permission)'],
+                    'scope_path'  => $b('varchar', 255) + ['comment' => 'Rutas jerarquicas separadas por coma (NULL=heredar scope de gac_role_entity). Ej: /sucursal/1,/sucursal/2/*'],
                     'type'        => $b('varchar', 30) + ['notnull' => true, 'comment' => 'Tipo: date, ip'],
                     'rule'        => $b('varchar', 30) + ['notnull' => true, 'comment' => 'Regla segun tipo: date=before/after/in_range/out_range, ip=allow/deny'],
                     'config'      => ['type' => 'longtext', 'notnull' => true, 'comment' => 'Configuracion en JSON'],
@@ -192,7 +193,7 @@ class Schema {
 
         $lines[] = '  PRIMARY KEY (`id`)';
 
-        // UNIQUE — use numeric suffix to avoid long names
+        // UNIQUE
         if (!empty($def['unique'])) {
             foreach ($def['unique'] as $u) {
                 $cols = is_array($u) ? $u : [$u];
@@ -209,19 +210,16 @@ class Schema {
             }
         }
 
-        $comment = isset($def['comment']) ? " COMMENT='" . addslashes($def['comment']) . "'" : '';
-        $statements = [];
-        $statements[] = "CREATE TABLE IF NOT EXISTS `$table` (\n" . implode(",\n", $lines) . "\n) ENGINE=InnoDB DEFAULT CHARSET=$charset COLLATE=$collation$comment;";
-
-        // FK
+        // FK — Embedded inside CREATE TABLE so IF NOT EXISTS makes installation idempotent
         if (!empty($def['fk'])) {
             foreach ($def['fk'] as $fk) {
                 $fkn = 'fk_' . $table . '_' . $fk[0];
-                $statements[] = "ALTER TABLE `$table` ADD CONSTRAINT `$fkn` FOREIGN KEY (`$fk[0]`) REFERENCES `$fk[1]` (`$fk[2]`);";
+                $lines[] = '  CONSTRAINT `' . $fkn . '` FOREIGN KEY (`' . $fk[0] . '`) REFERENCES `' . $fk[1] . '` (`' . $fk[2] . '`)';
             }
         }
 
-        return $statements;
+        $comment = isset($def['comment']) ? " COMMENT='" . addslashes($def['comment']) . "'" : '';
+        return ["CREATE TABLE IF NOT EXISTS `$table` (\n" . implode(",\n", $lines) . "\n) ENGINE=InnoDB DEFAULT CHARSET=$charset COLLATE=$collation$comment;"];
     }
 
     private static function mysqlColType(array $col): string {
@@ -275,6 +273,14 @@ class Schema {
             }
         }
 
+        // FK — Embedded inside CREATE TABLE so IF NOT EXISTS makes installation idempotent
+        if (!empty($def['fk'])) {
+            foreach ($def['fk'] as $fk) {
+                $fkn = 'fk_' . $table . '_' . $fk[0];
+                $lines[] = '  CONSTRAINT "' . $fkn . '" FOREIGN KEY ("' . $fk[0] . '") REFERENCES "' . $fk[1] . '" ("' . $fk[2] . '")';
+            }
+        }
+
         $statements = [];
         $statements[] = "CREATE TABLE IF NOT EXISTS \"$table\" (\n" . implode(",\n", $lines) . "\n);";
 
@@ -284,13 +290,6 @@ class Schema {
                 $cols = is_array($ix) ? $ix : [$ix];
                 $name = 'idx_' . $table . '_' . implode('_', $cols);
                 $statements[] = 'CREATE INDEX IF NOT EXISTS "' . $name . '" ON "' . $table . '" ("' . implode('","', $cols) . '");';
-            }
-        }
-
-        // FK
-        if (!empty($def['fk'])) {
-            foreach ($def['fk'] as $fk) {
-                $statements[] = 'ALTER TABLE "' . $table . '" ADD CONSTRAINT "fk_' . $table . '_' . $fk[0] . '" FOREIGN KEY ("' . $fk[0] . '") REFERENCES "' . $fk[1] . '" ("' . $fk[2] . '");';
             }
         }
 
@@ -306,25 +305,20 @@ class Schema {
         return $statements;
     }
 
-    private static function pgsqlColType(string $name, array $col): string {
+    private static function pgsqlColType(string $colName, array $col): string {
         $nn = $col['notnull'] ?? false;
         $hasD = array_key_exists('default', $col);
         $d = $hasD ? " DEFAULT '" . $col['default'] . "'" : ($nn ? '' : ' DEFAULT NULL');
 
-        if ($col['type'] === 'enum') {
-            return "VARCHAR(1) NOT NULL DEFAULT '" . ($col['default'] ?? $col['vals'][0]) . "' CHECK (\"$name\" IN ('" . implode("','", $col['vals']) . "'))";
-        }
-
         return match ($col['type']) {
-            'int'      => 'INT' . ($nn ? ' NOT NULL' : '') . $d,
+            'int'      => 'INTEGER' . ($nn ? ' NOT NULL' : '') . $d,
             'bigint'   => 'BIGINT' . ($nn ? ' NOT NULL' : '') . $d,
             'smallint' => 'SMALLINT' . ($nn ? ' NOT NULL' : '') . $d,
             'tinyint'  => 'SMALLINT' . ($nn ? ' NOT NULL' : '') . $d,
             'varchar'  => 'VARCHAR(' . $col['length'] . ')' . ($nn ? ' NOT NULL' : '') . $d,
-            'text'     => 'TEXT' . ($nn ? ' NOT NULL' : '') . $d,
-            'longtext' => 'TEXT' . ($nn ? ' NOT NULL' : ''),
-            'datetime' => 'TIMESTAMP(0)' . ($nn ? ' NOT NULL' : '') . $d,
-            'timestamp'=> 'TIMESTAMP(0)' . ($nn ? ' NOT NULL' : '') . $d,
+            'text', 'longtext' => 'TEXT' . ($nn ? ' NOT NULL' : '') . $d,
+            'datetime', 'timestamp' => 'TIMESTAMP' . ($nn ? ' NOT NULL' : '') . $d,
+            'enum'     => 'VARCHAR(20)' . ($nn ? ' NOT NULL' : '') . $d,
             default    => throw new \RuntimeException('Unknown PostgreSQL type: ' . $col['type']),
         };
     }
