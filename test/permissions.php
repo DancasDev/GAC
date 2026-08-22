@@ -31,7 +31,63 @@ test('supervisor solo read en users, sin my_profile', function () {
     assert($u !== null);
     assert(!$u->hasFeature('create'));
     assert($u->hasFeature('read'));
+    assert($u->hasFeature('dev') === false);
+    assert($u->isAllowed() === true);
+    assert($u->isAllowed('read') === true);
+    assert($u->isAllowed('create') === false);
     assert($p->get('my_profile') === null);
+});
+
+test('modulo en produccion e isAllowed con combinaciones de feature', function () use ($gac) {
+    $p = $gac->getPermissions();
+    $u = $p->get('users');
+    assert($u !== null);
+    assert($u->moduleIsDeveloping() === false);
+    assert($u->isAllowed() === true);
+    assert($u->isAllowed(['read', 'create']) === true);
+    assert($u->isAllowed(7) === true); // 1 + 2 + 4
+});
+
+test('isAllowed retorna false si solo tiene feature dev y ninguna accion operativa', function () {
+    // Permission con d='0', f=32 (solo dev)
+    $permDevOnly = new \DancasDev\GAC\Permissions\Permission([
+        'i' => 99,
+        'd' => '0',
+        'f' => 32, // solo dev
+        'm' => 'modulo_test',
+        'l' => 1,
+        'p' => null
+    ]);
+    assert($permDevOnly->isAllowed() === false); // false porque no tiene create, read, update, delete, trash
+    assert($permDevOnly->isAllowed('dev') === true); // true si se solicita explicitamente la accion 'dev'
+    assert($permDevOnly->isAllowed('read') === false);
+});
+
+test('isAllowed en modulo en desarrollo valida dev antes de feature operativa', function () {
+    // Permission con d='1' (desarrollo), f=3 (read+create, SIN dev)
+    $permDevSin = new \DancasDev\GAC\Permissions\Permission([
+        'i' => 100,
+        'd' => '1',
+        'f' => 3, // read + create
+        'm' => 'modulo_dev',
+        'l' => 1,
+        'p' => null
+    ]);
+    assert($permDevSin->isAllowed() === false);
+    assert($permDevSin->isAllowed('read') === false);
+
+    // Permission con d='1' (desarrollo), f=35 (read+create+dev -> 1 + 2 + 32)
+    $permDevCon = new \DancasDev\GAC\Permissions\Permission([
+        'i' => 101,
+        'd' => '1',
+        'f' => 35,
+        'm' => 'modulo_dev',
+        'l' => 1,
+        'p' => null
+    ]);
+    assert($permDevCon->isAllowed() === true);
+    assert($permDevCon->isAllowed('read') === true);
+    assert($permDevCon->isAllowed('delete') === false);
 });
 
 test('exportPermissions exporta el arreglo crudo de permisos para la entidad', function () use ($gac) {

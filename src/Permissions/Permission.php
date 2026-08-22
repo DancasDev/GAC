@@ -47,7 +47,7 @@ class Permission {
     }
 
     /**
-     * Validar si el modulo esta en modo desarrollo
+     * Valida si el módulo está marcado en modo desarrollo
      * 
      * @return bool
      */
@@ -56,7 +56,30 @@ class Permission {
     }
 
     /**
-     * Verificar si existe acceso a determinadas caracteristicas
+     * Valida si el módulo es accesible para la entidad:
+     * - Si el módulo está en desarrollo, requiere obligatoriamente poseer la acción 'dev'.
+     * - Si no se especifica $feature: requiere al menos una acción operativa (create, read, update, delete, trash).
+     * - Si se especifica $feature: valida que posea dicha(s) acción(es) requerida(s).
+     *
+     * @param string|array|int|null $feature Característica(s) específica(s) a validar (opcional)
+     * @return bool
+     */
+    public function isAllowed(string|array|int|null $feature = null) : bool {
+        if ($this->moduleIsDeveloping() && !$this->hasFeature('dev')) {
+            return false;
+        }
+
+        $bits = (int) $this->feature;
+
+        if ($feature === null || $feature === '') {
+            return ($bits & 31) > 0;
+        }
+
+        return $this->hasFeature($feature);
+    }
+
+    /**
+     * Verificar si existe acceso a determinadas características
      * 
      * @param string|array|int $feature - Características a validar
      * 

@@ -92,15 +92,23 @@ Resultado:
 
 ---
 
-## 5. Metadatos Adicionales (*Payload*)
-
-Un permiso puede almacenar metadatos JSON arbitrarios en la columna `payload` para que el controlador aplique filtros adicionales:
+## 5. Consulta y Validación con el Objeto `Permission`
 
 ```php
 $permission = $gac->getPermission('archivos');
 
 if ($permission !== null) {
+    // 1. ¿El módulo es accesible según su estado (producción o desarrollo)?
+    $accessible = $permission->isAllowed(); // bool
+
+    // 2. ¿El módulo es accesible y tiene permiso de lectura?
+    $canRead = $permission->isAllowed('read'); // bool
+
+    // 3. Consultar metadatos adicionales (payload)
     $payload = $permission->getPayload(); // ej: ['locker_ids' => [1, 2]]
+
+    // 4. Consultar si el módulo está en fase de desarrollo
+    $isDev = $permission->moduleIsDeveloping(); // bool
 }
 ```
 
